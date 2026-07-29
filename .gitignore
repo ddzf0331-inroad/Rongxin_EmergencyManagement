@@ -2,7 +2,6 @@
 
 dashboard/node_modules/
 dashboard/.npm-cache/
-dashboard/dist/
 
 build/
 release/
