@@ -55,9 +55,8 @@ button {
 .dashboard {
   position: relative;
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh;
   min-width: 1024px;
-  min-height: 600px;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% -8%, rgba(16, 137, 255, 0.28), transparent 26%),
@@ -187,7 +186,7 @@ button {
 .dashboard-grid {
   position: relative;
   z-index: 2;
-  height: calc(100vh - 72px);
+  min-height: calc(100vh - 72px);
   display: grid;
   grid-template-columns: minmax(260px, 23.7vw) minmax(0, 1fr) minmax(260px, 23.9vw);
   gap: 12px;
@@ -195,17 +194,34 @@ button {
 }
 
 .side-rail {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 217, 255, 0.3) transparent;
 }
 
-.side-rail--left {
-  grid-template-rows: 27.5% 32.5% 1fr;
+.side-rail::-webkit-scrollbar {
+  width: 4px;
 }
 
-.side-rail--right {
-  grid-template-rows: 33% 25% 1fr;
+.side-rail::-webkit-scrollbar-thumb {
+  background: rgba(0, 217, 255, 0.3);
+  border-radius: 2px;
+}
+
+.side-rail--left > .panel,
+.side-rail--right > .panel {
+  flex-shrink: 0;
+}
+
+.side-rail + .map-wrapper,
+.dashboard-grid > .map-wrapper,
+.dashboard-grid > div:not(.side-rail) {
+  min-height: calc(100vh - 96px);
 }
 
 .panel {
@@ -1481,15 +1497,12 @@ button {
 }
 
 .response-grid {
-  grid-template-columns: minmax(310px, 23.5vw) minmax(0, 1fr) minmax(312px, 24.2vw);
+  grid-template-columns: minmax(280px, 23.5vw) minmax(0, 1fr) minmax(280px, 24.2vw);
 }
 
-.response-rail--left {
-  grid-template-rows: 23% 22.5% 31% 1fr;
-}
-
+.response-rail--left,
 .response-rail--right {
-  grid-template-rows: 31% 30% 1fr;
+  grid-template-rows: none;
 }
 
 .panel-icon-button {
