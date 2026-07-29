@@ -58,6 +58,7 @@
 - 预览入口: `scripts/coze-preview-build.sh` + `scripts/coze-preview-run.sh`
 - 预览端口: 5000（前端 Vite dev server）
 - 后端服务: 预览时自动启动在 127.0.0.1:8766
+- API 代理: Vite proxy 将 `/api` 请求代理到后端
 - 根 `.coze` 与子项目 `dashboard/.coze` 的 `project_type` 和 `preview_enable` 保持一致
 
 ### Coze 部署配置

@@ -1,6 +1,7 @@
 import type { ChemicalProfile, ReleaseScenario, SimulationRun, WeatherInput } from "../types";
 
-const API_BASE = (import.meta.env.VITE_SIMULATION_API_BASE_URL ?? "http://127.0.0.1:8765").replace(/\/$/, "");
+const rawBase = import.meta.env.VITE_SIMULATION_API_BASE_URL;
+const API_BASE = (rawBase === "" ? "" : (rawBase ?? "")).replace(/\/$/, "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {

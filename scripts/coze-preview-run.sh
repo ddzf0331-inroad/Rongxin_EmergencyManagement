@@ -8,7 +8,8 @@ cd "$PROJECT_DIR"
 
 # 显式声明关键环境变量
 export PORT=5000
-export VITE_SIMULATION_API_BASE_URL="http://127.0.0.1:8766"
+# 设置为空字符串，让前端使用相对路径，通过 Vite proxy 代理到后端
+export VITE_SIMULATION_API_BASE_URL=""
 
 # 启动后端服务（如果未运行）
 # 后端服务绑定 127.0.0.1:8766，使用开发数据库
