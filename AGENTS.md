@@ -64,9 +64,9 @@
 ### Coze 部署配置
 
 - 部署类型: service / web
-- 构建脚本: `scripts/coze-deploy-build.sh`（构建前端静态文件）
+- 构建脚本: `scripts/coze-deploy-build.sh`（构建前端静态文件，pnpm 不可用时使用预构建产物）
 - 运行脚本: `scripts/coze-deploy-run.sh`（启动后端服务，端口 5000）
-- 运行时: nodejs-24, python-3.12
+- 运行时: python-3.12（单运行时，前端产物已提交到 `dashboard/dist/`）
 - 后端服务同时提供 API 和前端静态文件
 
 ## 用户偏好与长期约束
