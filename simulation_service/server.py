@@ -652,8 +652,11 @@ def main() -> None:
     parser.add_argument("--database", type=Path, default=DEFAULT_DB)
     parser.add_argument("--static", type=Path, default=DEFAULT_STATIC)
     args = parser.parse_args()
-    if args.host not in {"127.0.0.1", "localhost", "::1"}:
-        parser.error("production service may only bind to loopback")
+    # Allow 0.0.0.0 when DEPLOY_BIND_ALL is set (for containerized deployments)
+    allow_all = os.environ.get("DEPLOY_BIND_ALL", "").lower() in {"1", "true", "yes"}
+    allowed_hosts = {"127.0.0.1", "localhost", "::1", "0.0.0.0"} if allow_all else {"127.0.0.1", "localhost", "::1"}
+    if args.host not in allowed_hosts:
+        parser.error("production service may only bind to loopback (set DEPLOY_BIND_ALL=1 to allow 0.0.0.0)")
     server = make_server(args.host, args.port, args.database, args.static)
     print(f"Accident simulation service {ENGINE_VERSION}: http://{args.host}:{args.port}", flush=True)
     try:

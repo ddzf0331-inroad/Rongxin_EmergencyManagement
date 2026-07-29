@@ -74,7 +74,7 @@
 - 前端使用 pnpm，禁止 npm/yarn
 - Python 后端仅使用标准库，不引入第三方依赖（打包用 PyInstaller 除外）
 - SLAB 二进制需由部署方显式传入，未传入时重气计算明确失败，不回退高斯模型
-- 后端只绑定回环地址（127.0.0.1）
+- 后端默认只绑定回环地址（127.0.0.1），部署时设置 `DEPLOY_BIND_ALL=1` 允许绑定 `0.0.0.0`
 - 事件状态: pending → non_emergency/responding → terminated；同一时刻只允许一条"响应中"事件
 
 ## 常见问题和预防
