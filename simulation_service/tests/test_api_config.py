@@ -34,6 +34,26 @@ class ApiConfigUnitTests(unittest.TestCase):
         with self.assertRaises(InputError):
             validate_api_config(config)
 
+    def test_config_save_preserves_every_frontend_item_mapping(self):
+        config = default_api_config()
+        config["baseUrl"] = "https://example.com"
+        for source_key, fields in SOURCE_FIELDS.items():
+            for field in fields:
+                config["sources"][source_key]["itemPaths"][field] = f"payload.{field}"
+
+        saved = validate_api_config(config)
+
+        for source_key, fields in SOURCE_FIELDS.items():
+            self.assertEqual(
+                saved["sources"][source_key]["itemPaths"],
+                {field: f"payload.{field}" for field in fields},
+            )
+        self.assertEqual(saved["sources"]["chemicals"]["itemPaths"]["cas"], "payload.cas")
+        self.assertEqual(
+            saved["sources"]["dashboardPlans"]["itemPaths"]["attachments"],
+            "payload.attachments",
+        )
+
     def test_request_and_detail_urls_preserve_expected_parameters(self):
         config = default_api_config()
         source = config["sources"]["materials"]

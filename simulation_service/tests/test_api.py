@@ -162,9 +162,22 @@ class ApiTests(unittest.TestCase):
         config = default_api_config()
         config["baseUrl"] = self.external_base
         config["sources"]["materials"]["enabled"] = True
+        config["sources"]["chemicals"]["itemPaths"]["cas"] = "profile.casCode"
+        config["sources"]["dashboardPlans"]["itemPaths"]["attachments"] = "payload.files"
         status, saved = self.put_json("/api/emergency-dashboard/api-config", config)
         self.assertEqual(status, 200)
         self.assertTrue(saved["updatedAt"])
+        self.assertEqual(saved["sources"]["chemicals"]["itemPaths"]["cas"], "profile.casCode")
+        self.assertEqual(
+            saved["sources"]["dashboardPlans"]["itemPaths"]["attachments"],
+            "payload.files",
+        )
+        _, loaded = self.get_json("/api/emergency-dashboard/api-config")
+        self.assertEqual(loaded["sources"]["chemicals"]["itemPaths"]["cas"], "profile.casCode")
+        self.assertEqual(
+            loaded["sources"]["dashboardPlans"]["itemPaths"]["attachments"],
+            "payload.files",
+        )
 
         status, preview = self.post_json("/api/emergency-dashboard/api-config/test", {
             "sourceKey": "materials",

@@ -15,8 +15,14 @@ SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
     "materials": ("id", "name", "location", "expireAt", "owner", "expiryStatus"),
     "drills": ("id", "time", "department", "unit", "planName", "status"),
     "hazards": ("id", "level", "name", "area", "owner", "medium", "status"),
-    "dashboardPlans": ("id", "name", "type", "applicableArea", "status"),
-    "chemicals": ("id", "name", "alias", "hazardClass", "danger", "emergencyMeasure", "detail"),
+    "dashboardPlans": ("id", "name", "type", "applicableArea", "status", "attachments"),
+    "chemicals": (
+        "id", "name", "alias", "hazardClass", "danger", "emergencyMeasure", "detail",
+        "cas", "phase", "molarMassKgMol", "gasDensityKgM3", "liquidDensityKgM3",
+        "boilingPointK", "vaporPressurePa", "vaporHeatCapacityJkgK",
+        "liquidHeatCapacityJkgK", "latentHeatJkg", "gamma", "erpg1Ppm", "erpg2Ppm",
+        "erpg3Ppm", "erpgSource", "erpgVersion", "propertySource", "propertyVersion",
+    ),
     "cases": ("id", "title", "accidentType", "level", "occurredAt", "summary"),
     "responsePlans": ("id", "name", "category", "level", "owner", "status"),
 }
@@ -46,11 +52,19 @@ DEFAULT_ITEM_PATHS = {
     },
     "dashboardPlans": {
         "id": "id", "name": "name", "type": "type", "applicableArea": "applicableArea",
-        "status": "status",
+        "status": "status", "attachments": "attachments",
     },
     "chemicals": {
         "id": "id", "name": "name", "alias": "alias", "hazardClass": "hazardClass",
         "danger": "danger", "emergencyMeasure": "emergencyMeasure", "detail": "detail",
+        "cas": "cas", "phase": "phase", "molarMassKgMol": "molarMassKgMol",
+        "gasDensityKgM3": "gasDensityKgM3", "liquidDensityKgM3": "liquidDensityKgM3",
+        "boilingPointK": "boilingPointK", "vaporPressurePa": "vaporPressurePa",
+        "vaporHeatCapacityJkgK": "vaporHeatCapacityJkgK",
+        "liquidHeatCapacityJkgK": "liquidHeatCapacityJkgK", "latentHeatJkg": "latentHeatJkg",
+        "gamma": "gamma", "erpg1Ppm": "erpg1Ppm", "erpg2Ppm": "erpg2Ppm",
+        "erpg3Ppm": "erpg3Ppm", "erpgSource": "erpgSource", "erpgVersion": "erpgVersion",
+        "propertySource": "propertySource", "propertyVersion": "propertyVersion",
     },
     "cases": {
         "id": "id", "title": "title", "accidentType": "accidentType", "level": "level",

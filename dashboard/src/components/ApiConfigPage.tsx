@@ -116,6 +116,12 @@ function normalizeConfigForUi(config: DashboardApiConfig): DashboardApiConfig {
   if (!planPaths.applicableArea && planPaths.version) {
     planPaths.applicableArea = planPaths.version;
   }
+  sourceKeys.forEach((key) => {
+    const itemPaths = next.sources[key].itemPaths;
+    Object.keys(sourceMeta[key].itemFields).forEach((field) => {
+      if (!itemPaths[field]) itemPaths[field] = field;
+    });
+  });
   return next;
 }
 
