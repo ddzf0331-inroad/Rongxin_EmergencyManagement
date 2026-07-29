@@ -76,9 +76,13 @@ def source_term(scenario: dict[str, Any], chemical: dict[str, Any], weather: dic
         raise InputError("releaseHeightM cannot be negative", ["releaseHeightM"])
 
     if kind == "instantaneous":
+        initial_density = weather["pressurePa"] * chemical["molarMassKgMol"] / (R * temperature)
+        initial_volume = inventory / initial_density
         return {
-            "releaseKind": "instantaneous", "massRateKgS": inventory, "durationS": 1.0,
-            "releasedMassKg": inventory, "instantaneousMassKg": inventory, "areaM2": 1.0,
+            "releaseKind": "instantaneous", "massRateKgS": 0.0, "durationS": 0.0,
+            "releasedMassKg": inventory, "instantaneousMassKg": inventory,
+            "initialGasDensityKgM3": initial_density, "instantaneousVolumeM3": initial_volume,
+            "areaM2": initial_volume / height if height > 0 else 0.0,
             "heightM": height, "temperatureK": temperature, "liquidMassFraction": 0.0,
         }
 
@@ -299,6 +303,11 @@ def simulate(raw: dict[str, Any], chemical: dict[str, Any]) -> tuple[dict[str, A
     require_number(source_xy, "northM", positive=False)
     source = source_term(scenario, chemical, weather)
     route = model_route(chemical, source, weather)
+    if route["model"] == "slab" and source["releaseKind"] == "instantaneous" and source["heightM"] <= 0:
+        raise InputError(
+            "releaseHeightM must be greater than zero for an instantaneous SLAB volume source",
+            ["releaseHeightM"],
+        )
     thresholds = (("ERPG-3", chemical["erpg3Ppm"], "#ff3b30"), ("ERPG-2", chemical["erpg2Ppm"], "#ffc400"), ("ERPG-1", chemical["erpg1Ppm"], "#168cff"))
     slab_rows = None
     if route["model"] == "slab":

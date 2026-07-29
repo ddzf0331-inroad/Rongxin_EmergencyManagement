@@ -18,9 +18,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return value as T;
 }
 
+async function ensureChemicalProfile(chemical: ChemicalProfile): Promise<ChemicalProfile> {
+  const values = await request<ChemicalProfile[]>("/api/accident-simulation/chemicals");
+  const existing = values.find((item) => item.id === chemical.id || item.cas === chemical.cas || item.name === chemical.name);
+  if (existing) {
+    return request<ChemicalProfile>(`/api/accident-simulation/chemicals/${existing.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...chemical, id: existing.id }),
+    }).catch(() => existing);
+  }
+
+  const { id: _id, ...payload } = chemical;
+  return request<ChemicalProfile>("/api/accident-simulation/chemicals", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }).catch(async () => {
+    const latest = await request<ChemicalProfile[]>("/api/accident-simulation/chemicals");
+    const matched = latest.find((item) => item.cas === chemical.cas || item.name === chemical.name);
+    if (matched) return matched;
+    throw new Error("Chemical profile does not exist");
+  });
+}
+
 export const simulationApi = {
   health: () => request<{ status: string; slabAvailable: boolean; engineVersion: string }>("/api/accident-simulation/health", { cache: "no-store" }),
   getChemicals: () => request<ChemicalProfile[]>("/api/accident-simulation/chemicals"),
+  ensureChemical: ensureChemicalProfile,
   createChemical: (chemical: Omit<ChemicalProfile, "id">) => request<ChemicalProfile>("/api/accident-simulation/chemicals", { method: "POST", body: JSON.stringify(chemical) }),
   updateChemical: (chemical: ChemicalProfile) => request<ChemicalProfile>(`/api/accident-simulation/chemicals/${chemical.id}`, { method: "PUT", body: JSON.stringify(chemical) }),
   deleteChemical: (id: string) => request<void>(`/api/accident-simulation/chemicals/${id}`, { method: "DELETE" }),

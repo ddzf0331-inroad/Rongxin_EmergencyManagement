@@ -10,7 +10,7 @@ const emptyForm: IncidentCreateInput = {
   type: incidentTypeOptions[0],
   location: "",
   description: "",
-  reporter: "",
+  reporter: "张三",
   reporterPhone: "",
 };
 
@@ -49,7 +49,7 @@ export function IncidentReportPage() {
           <h1>事件上报成功</h1>
           <p>指挥中心已收到事件信息，当前状态为“待研判”。</p>
           <dl>
-            <div><dt>事件编号</dt><dd>{submitted.id}</dd></div>
+            <div><dt>事件编号</dt><dd>{submitted.incidentNo}</dd></div>
             <div><dt>事件名称</dt><dd>{submitted.title}</dd></div>
             <div><dt>上报时间</dt><dd>{displayTime(submitted.reportedAt)}</dd></div>
           </dl>

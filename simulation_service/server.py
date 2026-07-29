@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import ENGINE_VERSION
 from .api_config import ExternalSourceError, SOURCE_FIELDS, default_api_config, request_source, validate_api_config
-from .db import connect, dumps, loads, row_to_incident, row_to_run
+from .db import connect, dumps, loads, next_incident_no, row_to_incident, row_to_run
 from .models import InputError, simulate, validate_chemical
 from .slab import default_binary, is_available
 
@@ -438,14 +438,16 @@ class SimulationHandler(SimpleHTTPRequestHandler):
         incident_id = f"incident-{uuid.uuid4().hex}"
         now = utc_now()
         database = self._database()
+        database.execute("BEGIN IMMEDIATE")
+        incident_no = next_incident_no(database, now)
         database.execute(
             """
             INSERT INTO emergency_incidents (
-              id, title, type, location, description, reporter, reporter_phone,
+              id, incident_no, title, type, location, description, reporter, reporter_phone,
               reported_at, status, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             """,
-            (incident_id, title, incident_type, location, description, reporter, reporter_phone, now, now),
+            (incident_id, incident_no, title, incident_type, location, description, reporter, reporter_phone, now, now),
         )
         database.commit()
         row = database.execute("SELECT * FROM emergency_incidents WHERE id = ?", (incident_id,)).fetchone()
@@ -469,9 +471,9 @@ class SimulationHandler(SimpleHTTPRequestHandler):
             values.append(incident_type)
         if keyword:
             clauses.append(
-                "(title LIKE ? OR location LIKE ? OR description LIKE ? OR reporter LIKE ? OR reporter_phone LIKE ?)"
+                "(incident_no LIKE ? OR id LIKE ? OR title LIKE ? OR location LIKE ? OR description LIKE ? OR reporter LIKE ? OR reporter_phone LIKE ?)"
             )
-            values.extend([f"%{keyword}%"] * 5)
+            values.extend([f"%{keyword}%"] * 7)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         database = self._database()
         rows = database.execute(

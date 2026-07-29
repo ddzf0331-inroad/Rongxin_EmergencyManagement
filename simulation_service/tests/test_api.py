@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -7,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from simulation_service.api_config import default_api_config
+from simulation_service.db import connect, next_incident_no
 from simulation_service.server import make_server
 
 
@@ -125,6 +127,7 @@ class ApiTests(unittest.TestCase):
         })
         self.assertEqual(status, 201)
         self.assertEqual(incident["status"], "pending")
+        self.assertRegex(incident["incidentNo"], r"^SJ-\d{8}-\d{4}$")
 
         _, pending = self.get_json("/api/emergency/incidents/pending")
         self.assertEqual(pending["id"], incident["id"])
@@ -144,6 +147,8 @@ class ApiTests(unittest.TestCase):
 
         _, records = self.get_json("/api/emergency/incidents?status=terminated&keyword=23")
         self.assertEqual([item["id"] for item in records], [incident["id"]])
+        _, records = self.get_json(f"/api/emergency/incidents?keyword={incident['incidentNo']}")
+        self.assertEqual([item["id"] for item in records], [incident["id"]])
 
     def test_pending_incident_can_be_classified_as_non_emergency(self):
         _, incident = self.post_json("/api/emergency/incidents", {
@@ -157,6 +162,50 @@ class ApiTests(unittest.TestCase):
         _, judged = self.post_json(f"/api/emergency/incidents/{incident['id']}/non-emergency", {})
         self.assertEqual(judged["status"], "non_emergency")
         self.assertIsNotNone(judged["judgedAt"])
+
+    def test_legacy_incidents_receive_ordered_human_readable_numbers(self):
+        path = Path(self.temp.name) / "legacy-incidents.sqlite3"
+        database = sqlite3.connect(path)
+        database.executescript(
+            """
+            CREATE TABLE emergency_incidents (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              type TEXT NOT NULL,
+              location TEXT NOT NULL,
+              description TEXT NOT NULL,
+              reporter TEXT NOT NULL,
+              reporter_phone TEXT NOT NULL DEFAULT '',
+              reported_at TEXT NOT NULL,
+              status TEXT NOT NULL,
+              judged_at TEXT,
+              responded_at TEXT,
+              terminated_at TEXT,
+              termination_reasons_json TEXT,
+              termination_note TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL
+            );
+            INSERT INTO emergency_incidents (
+              id, title, type, location, description, reporter, reported_at, status, updated_at
+            ) VALUES
+              ('legacy-1', '较早事件', '泄漏', '一号区域', '描述', '张三', '2026-07-28T01:00:00+00:00', 'terminated', '2026-07-28T01:00:00+00:00'),
+              ('legacy-2', '较晚事件', '泄漏', '二号区域', '描述', '李四', '2026-07-28T02:00:00+00:00', 'terminated', '2026-07-28T02:00:00+00:00'),
+              ('legacy-3', '次日事件', '泄漏', '三号区域', '描述', '王五', '2026-07-28T16:30:00+00:00', 'terminated', '2026-07-28T16:30:00+00:00');
+            """
+        )
+        database.close()
+
+        migrated = connect(path)
+        rows = migrated.execute(
+            "SELECT incident_no FROM emergency_incidents ORDER BY reported_at"
+        ).fetchall()
+        self.assertEqual([row["incident_no"] for row in rows], [
+            "SJ-20260728-0001",
+            "SJ-20260728-0002",
+            "SJ-20260729-0001",
+        ])
+        self.assertEqual(next_incident_no(migrated, "2026-07-28T03:00:00+00:00"), "SJ-20260728-0003")
+        migrated.close()
 
     def test_api_config_proxy_and_last_successful_cache(self):
         config = default_api_config()

@@ -66,10 +66,18 @@ const sourceMeta: Record<
   },
   chemicals: {
     label: "化学品特性",
-    description: "应急响应页面的化学特性与处置卡片",
+    description: "应急响应页面的化学特性与处置卡片，并为事故后果模拟提供物性参数",
     itemFields: {
       id: "记录 ID", name: "名称", alias: "别名", hazardClass: "危险类别",
       danger: "危险描述", emergencyMeasure: "应急措施", detail: "处置补充",
+      cas: "CAS 号", phase: "相态", molarMassKgMol: "分子量 kg/mol",
+      gasDensityKgM3: "气体密度 kg/m³", liquidDensityKgM3: "液体密度 kg/m³",
+      boilingPointK: "沸点 K", vaporPressurePa: "蒸气压 Pa",
+      vaporHeatCapacityJkgK: "气相热容 J/(kg·K)", liquidHeatCapacityJkgK: "液相热容 J/(kg·K)",
+      latentHeatJkg: "汽化热 J/kg", gamma: "绝热指数",
+      erpg1Ppm: "ERPG-1 ppm", erpg2Ppm: "ERPG-2 ppm", erpg3Ppm: "ERPG-3 ppm",
+      erpgSource: "ERPG 来源", erpgVersion: "ERPG 版本",
+      propertySource: "物性来源", propertyVersion: "物性版本",
     },
   },
   cases: {

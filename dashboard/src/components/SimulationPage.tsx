@@ -1,9 +1,9 @@
-import { ArrowLeft, CircleHelp, Clock3, FlaskConical, Layers, Pencil, Play, Plus, Save, Trash2, Wind, X } from "lucide-react";
+import { ArrowLeft, CircleHelp, FlaskConical, Layers, Pencil, Play, Plus, Save, Trash2, Wind, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { mapToPhysical } from "../mapGeometry";
 import { dashboardApi } from "../services/dashboardApi";
 import { simulationApi } from "../services/simulationApi";
-import type { ChemicalProfile, ConsequenceZone, DashboardMapConfig, MapLayerKey, ReleaseScenario, SimulationRun, WeatherInput } from "../types";
+import type { ChemicalProfile, ConsequenceZone, DashboardMapConfig, MapLayerKey, MsdsRecord, ReleaseScenario, SimulationRun, WeatherInput } from "../types";
 import { MapStage } from "./MapStage";
 
 const simulationInitialLayers: Record<MapLayerKey, boolean> = {
@@ -41,6 +41,93 @@ function pointInPolygon(point: { eastM: number; northM: number }, polygon: Conse
 
 function Input({ label, value, unit, onChange }: { label: string; value: number; unit: string; onChange: (value: number) => void }) {
   return <label className="simulation-field"><span>{label}</span><div><input type="number" step="any" value={value} onChange={(event) => onChange(number(event.target.value))} /><em>{unit}</em></div></label>;
+}
+
+const simulationChemicalNumberFields: Array<[keyof MsdsRecord, string]> = [
+  ["molarMassKgMol", "分子量"], ["gasDensityKgM3", "气体密度"], ["liquidDensityKgM3", "液体密度"],
+  ["boilingPointK", "沸点"], ["vaporPressurePa", "蒸气压"], ["vaporHeatCapacityJkgK", "气相热容"],
+  ["liquidHeatCapacityJkgK", "液相热容"], ["latentHeatJkg", "汽化热"], ["gamma", "绝热指数"],
+  ["erpg1Ppm", "ERPG-1"], ["erpg2Ppm", "ERPG-2"], ["erpg3Ppm", "ERPG-3"],
+];
+
+function positiveNumber(value: unknown) {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizePhase(value: unknown): ChemicalProfile["phase"] | null {
+  if (value === "gas" || value === "气体") return "gas";
+  if (value === "liquefiedGas" || value === "液化气" || value === "液化气体") return "liquefiedGas";
+  return null;
+}
+
+function chemicalRecordCas(record: MsdsRecord) {
+  const cas = record.cas?.trim();
+  const alias = record.alias?.trim();
+  return cas || (/^\d{2,7}-\d{2}-\d$/.test(alias ?? "") ? alias! : "");
+}
+
+function assessSimulationChemical(record: MsdsRecord): { chemical: ChemicalProfile | null; reasons: string[] } {
+  const name = record.name?.trim();
+  const cas = chemicalRecordCas(record);
+  const phase = normalizePhase(record.phase);
+  const reasons: string[] = [];
+  const missingBasic = [!record.id && "记录 ID", !name && "名称", !cas && "CAS 号"].filter(Boolean);
+  if (missingBasic.length) reasons.push(`缺少${missingBasic.join("、")}`);
+  if (!record.phase || !String(record.phase).trim()) reasons.push("缺少相态");
+  else if (!phase) reasons.push("相态仅支持气体或液化气");
+
+  const missingNumbers: string[] = [];
+  const invalidNumbers: string[] = [];
+  const numbers = simulationChemicalNumberFields.reduce<Partial<Record<keyof MsdsRecord, number>>>((result, [field, label]) => {
+    const raw = record[field];
+    const value = positiveNumber(record[field]);
+    if (value !== null) result[field] = value;
+    else if (raw === undefined || raw === null || String(raw).trim() === "") missingNumbers.push(label);
+    else invalidNumbers.push(label);
+    return result;
+  }, {});
+  if (missingNumbers.length) reasons.push(`缺少${missingNumbers.join("、")}`);
+  if (invalidNumbers.length) reasons.push(`${invalidNumbers.join("、")}必须为大于 0 的数字`);
+
+  const missingSources = [
+    !record.propertySource?.trim() && "物性来源", !record.propertyVersion?.trim() && "物性版本",
+    !record.erpgSource?.trim() && "ERPG 来源", !record.erpgVersion?.trim() && "ERPG 版本",
+  ].filter(Boolean);
+  if (missingSources.length) reasons.push(`缺少${missingSources.join("、")}`);
+  if (!record.erpgUnit) reasons.push("缺少 ERPG 单位");
+  else if (record.erpgUnit !== "ppm") reasons.push("ERPG 单位必须为 ppm");
+  if (reasons.length) return { chemical: null, reasons };
+
+  return { chemical: {
+    id: record.id,
+    name: name!,
+    cas,
+    phase: phase!,
+    molarMassKgMol: numbers.molarMassKgMol!,
+    gasDensityKgM3: numbers.gasDensityKgM3!,
+    liquidDensityKgM3: numbers.liquidDensityKgM3!,
+    boilingPointK: numbers.boilingPointK!,
+    vaporPressurePa: numbers.vaporPressurePa!,
+    vaporHeatCapacityJkgK: numbers.vaporHeatCapacityJkgK!,
+    liquidHeatCapacityJkgK: numbers.liquidHeatCapacityJkgK!,
+    latentHeatJkg: numbers.latentHeatJkg!,
+    gamma: numbers.gamma!,
+    erpg1Ppm: numbers.erpg1Ppm!,
+    erpg2Ppm: numbers.erpg2Ppm!,
+    erpg3Ppm: numbers.erpg3Ppm!,
+    erpgUnit: record.erpgUnit!,
+    erpgSource: record.erpgSource!.trim(),
+    erpgVersion: record.erpgVersion!.trim(),
+    propertySource: record.propertySource!.trim(),
+    propertyVersion: record.propertyVersion!.trim(),
+  }, reasons: [] };
+}
+
+function matchesRequestedChemical(chemical: ChemicalProfile, source: MsdsRecord | undefined, requested: string | null) {
+  const value = requested?.trim();
+  if (!value) return false;
+  return [chemical.name, chemical.cas, source?.name, source?.alias].some((item) => item?.trim() === value);
 }
 
 function ChemicalEditor({ chemical, onClose, onSaved }: { chemical?: ChemicalProfile; onClose: () => void; onSaved: () => void }) {
@@ -85,7 +172,6 @@ export function SimulationPage() {
   const [weather, setWeather] = useState<WeatherInput>();
   const [scenario, setScenario] = useState<ReleaseScenario>(initialScenario);
   const [run, setRun] = useState<SimulationRun>();
-  const [frameIndex, setFrameIndex] = useState(-1);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<ChemicalProfile | "new">();
@@ -95,10 +181,34 @@ export function SimulationPage() {
   const [activeLayers, setActiveLayers] = useState(simulationInitialLayers);
 
   const loadChemicals = async () => {
-    const values = await simulationApi.getChemicals();
+    const [result, localChemicals] = await Promise.all([
+      dashboardApi.getExternalSource<MsdsRecord>("chemicals", { page: 1, pageSize: 100 }),
+      simulationApi.getChemicals(),
+    ]);
+    const pairs: Array<{ record?: MsdsRecord; chemical: ChemicalProfile }> = [];
+    const seen = new Set<string>();
+    result.data.list.forEach((record) => {
+      const assessment = assessSimulationChemical(record);
+      const recordCas = chemicalRecordCas(record);
+      const local = localChemicals.find((item) => (recordCas && item.cas === recordCas) || item.name === record.name?.trim());
+      const chemical = local ?? assessment.chemical;
+      if (chemical) {
+        const key = chemical.cas || chemical.id;
+        if (!seen.has(key)) { seen.add(key); pairs.push({ record, chemical }); }
+        return;
+      }
+    });
+    localChemicals.forEach((chemical) => {
+      const key = chemical.cas || chemical.id;
+      if (!seen.has(key)) { seen.add(key); pairs.push({ chemical }); }
+    });
+    const values = pairs.map((item) => item.chemical);
     setChemicals(values);
     const requested = new URLSearchParams(location.search).get("substance");
-    setChemicalId((current) => current || values.find((item) => item.name === requested)?.id || values[0]?.id || "");
+    setChemicalId((current) => {
+      if (current && values.some((item) => item.id === current)) return current;
+      return pairs.find((item) => matchesRequestedChemical(item.chemical, item.record, requested))?.chemical.id || values[0]?.id || "";
+    });
   };
 
   useEffect(() => {
@@ -118,16 +228,16 @@ export function SimulationPage() {
   const calibration = config?.calibration;
   const missing = useMemo(() => {
     const fields: string[] = [];
-    if (!chemicalId) fields.push("化学品");
+    if (!chemicalId) fields.push(chemicals.length ? "化学品" : "可模拟化学品");
     if (!weather) fields.push("气象数据");
     if (weather && !weather.stabilityClass) fields.push("Pasquill 稳定度");
     if (weather && weather.windSpeedMS < 0.5) fields.push("风速需人工修正至 ≥0.5 m/s");
     if (!calibration) fields.push("地图标定");
     else if (!calibration.validForSimulation) fields.push("地图标定误差需 ≤5 m");
     return fields;
-  }, [calibration, chemicalId, weather]);
+  }, [calibration, chemicalId, chemicals.length, weather]);
 
-  const displayedZones = frameIndex < 0 ? run?.zones ?? [] : run?.frames[frameIndex]?.zones ?? [];
+  const displayedZones = run?.zones ?? [];
   const pointCounts = useMemo(() => {
     const counts = (config?.mapPoints ?? []).reduce<Record<string, number>>((values, point) => {
       values[point.layer] = (values[point.layer] ?? 0) + 1;
@@ -153,8 +263,11 @@ export function SimulationPage() {
 
   const execute = async () => {
     if (!weather || missing.length) return;
-    setRunning(true); setError(""); setRun(undefined); setFrameIndex(-1);
-    try { setRun(await simulationApi.run(chemicalId, scenario, weather)); }
+    setRunning(true); setError(""); setRun(undefined);
+    try {
+      const runnableChemicalId = selectedChemical ? (await simulationApi.ensureChemical(selectedChemical)).id : chemicalId;
+      setRun(await simulationApi.run(runnableChemicalId, scenario, weather));
+    }
     catch (caught) { setError(caught instanceof Error ? caught.message : "计算失败"); }
     finally { setRunning(false); }
   };
@@ -172,7 +285,7 @@ export function SimulationPage() {
     <section className="simulation-workspace">
       <aside className="simulation-left">
         <h2>场景参数</h2>
-        <label className="simulation-select"><span>事故物质</span><select value={chemicalId} onChange={(e) => setChemicalId(e.target.value)}>{chemicals.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.cas}</option>)}</select></label>
+        <label className="simulation-select"><span>事故物质</span><select value={chemicalId} onChange={(e) => setChemicalId(e.target.value)} disabled={chemicals.length === 0}>{chemicals.length ? chemicals.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.cas}</option>) : <option value="">暂无可模拟化学品</option>}</select></label>
         <div className="chemical-actions"><button onClick={() => setEditor("new")}><Plus size={14} />新增</button><button disabled={!selectedChemical} onClick={() => selectedChemical && setEditor(selectedChemical)}><Pencil size={14} />编辑</button><button disabled={!selectedChemical} onClick={async () => { if (selectedChemical && confirm(`确认删除 ${selectedChemical.name}？`)) { await simulationApi.deleteChemical(selectedChemical.id); setChemicalId(""); await loadChemicals(); } }}><Trash2 size={14} />删除</button></div>
         <label className="simulation-select"><span>泄漏类型</span><select value={scenario.releaseType} onChange={(e) => setScenario({ ...scenario, releaseType: e.target.value as ReleaseScenario["releaseType"] })}><option value="pressurizedGas">加压气体孔泄漏</option><option value="liquefiedGas">液化气闪蒸/液池</option><option value="instantaneous">瞬时完全释放</option></select></label>
         <Input label="库存量" value={scenario.inventoryKg} unit="kg" onChange={(v) => setScenarioNumber("inventoryKg", v)} />
@@ -209,7 +322,6 @@ export function SimulationPage() {
         </>}
         {selectedZone && <div className="zone-detail"><b>{selectedZone.level} · {selectedZone.thresholdPpm} ppm</b><p>{selectedZone.harmDescription}</p><span>到达时间 {selectedZone.arrivalTimeS.toFixed(0)} s · 持续 {selectedZone.durationS.toFixed(0)} s</span></div>}
       </aside>
-      <footer className="simulation-timeline"><Clock3 size={17} /><button className={frameIndex < 0 ? "is-active" : ""} onClick={() => setFrameIndex(-1)}>最大包络</button><input type="range" min="0" max={Math.max((run?.frames.length ?? 1) - 1, 0)} value={Math.max(frameIndex, 0)} disabled={!run || frameIndex < 0} onChange={(e) => setFrameIndex(Number(e.target.value))} /><span>{frameIndex < 0 ? "全时段" : `${run?.frames[frameIndex]?.timeS.toFixed(0) ?? 0} s`}</span><button disabled={!run} onClick={() => setFrameIndex(frameIndex < 0 ? 0 : -1)}>{frameIndex < 0 ? "进入逐时" : "返回包络"}</button></footer>
     </section>
     {editor && <ChemicalEditor chemical={editor === "new" ? undefined : editor} onClose={() => setEditor(undefined)} onSaved={async () => { setEditor(undefined); await loadChemicals(); }} />}
     {showStabilityGuide && <div className="stability-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="stability-guide-title" onClick={() => setShowStabilityGuide(false)}><div className="stability-guide-card" onClick={(event) => event.stopPropagation()}><header><h2 id="stability-guide-title">Pasquill 大气稳定度选值备注</h2><button type="button" aria-label="关闭选值备注" onClick={() => setShowStabilityGuide(false)}><X size={20} /></button></header><img src="/assets/pasquill-stability-guide.png" alt="表 E.5 Pasquill 大气稳定度确定：根据地面风速、白天日照和夜间云量选择稳定度等级" /></div></div>}

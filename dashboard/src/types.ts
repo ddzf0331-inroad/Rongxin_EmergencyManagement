@@ -301,6 +301,7 @@ export interface IncidentCreateInput {
 
 export interface EmergencyIncident {
   id: string;
+  incidentNo: string;
   title: string;
   type: string;
   level: Severity;
@@ -337,6 +338,25 @@ export interface MsdsRecord {
   emergencyMeasure: string;
   detail: string;
   detailUrl?: string;
+  cas?: string;
+  phase?: ChemicalProfile["phase"] | "气体" | "液化气" | "液化气体";
+  molarMassKgMol?: number | string;
+  gasDensityKgM3?: number | string;
+  liquidDensityKgM3?: number | string;
+  boilingPointK?: number | string;
+  vaporPressurePa?: number | string;
+  vaporHeatCapacityJkgK?: number | string;
+  liquidHeatCapacityJkgK?: number | string;
+  latentHeatJkg?: number | string;
+  gamma?: number | string;
+  erpg1Ppm?: number | string;
+  erpg2Ppm?: number | string;
+  erpg3Ppm?: number | string;
+  erpgUnit?: ChemicalProfile["erpgUnit"];
+  erpgSource?: string;
+  erpgVersion?: string;
+  propertySource?: string;
+  propertyVersion?: string;
 }
 
 export interface EmergencyCase {

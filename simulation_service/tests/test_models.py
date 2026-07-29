@@ -94,8 +94,23 @@ class ModelTests(unittest.TestCase):
         }
         _, result = simulate(body, CHEMICAL)
         self.assertEqual(result["sourceTerm"]["releaseKind"], "instantaneous")
+        self.assertEqual(result["sourceTerm"]["massRateKgS"], 0.0)
+        self.assertEqual(result["sourceTerm"]["durationS"], 0.0)
         self.assertEqual(result["summary"]["releasedMassKg"], 50.0)
         self.assertTrue(result["frames"])
+
+    def test_instantaneous_slab_requires_positive_cloud_height(self):
+        body = {
+            "scenario": {
+                "releaseType": "instantaneous", "inventoryKg": 50.0,
+                "releaseTemperatureK": 298.15, "releaseHeightM": 0.0,
+                "sourceCoordinate": {"eastM": 0.0, "northM": 0.0},
+            },
+            "weather": WEATHER,
+        }
+        with self.assertRaises(InputError) as caught:
+            simulate(body, {**CHEMICAL, "gasDensityKgM3": 2.0})
+        self.assertEqual(caught.exception.fields, ["releaseHeightM"])
 
     def test_meteorological_wind_direction_rotates_downwind(self):
         body = {

@@ -15,6 +15,7 @@ import type {
   IncidentCreateInput,
   IncidentStatus,
   MapPoint,
+  MsdsRecord,
 } from "../types";
 
 const API_BASE =
@@ -61,6 +62,25 @@ function dashboardPlansFallback<T>(options: { page?: number; pageSize?: number }
   const start = (page - 1) * pageSize;
   return {
     sourceKey: "dashboardPlans",
+    data: {
+      list: list.slice(start, start + pageSize) as T[],
+      total: list.length,
+      page,
+      pageSize,
+    },
+    fetchedAt: new Date().toISOString(),
+    stale: true,
+    errorMessage: error instanceof Error ? error.message : "第三方接口异常",
+  };
+}
+
+function chemicalsFallback<T>(options: { page?: number; pageSize?: number }, error: unknown): ExternalSourceResult<T> {
+  const page = options.page ?? 1;
+  const pageSize = options.pageSize ?? 20;
+  const list = mockEmergencyResponseSnapshot.msdsRecords as MsdsRecord[];
+  const start = (page - 1) * pageSize;
+  return {
+    sourceKey: "chemicals",
     data: {
       list: list.slice(start, start + pageSize) as T[],
       total: list.length,
@@ -212,6 +232,7 @@ export const dashboardApi = {
       `/api/emergency-dashboard/external/${sourceKey}?${query.toString()}`,
     ).catch((error) => {
       if (sourceKey === "dashboardPlans") return wait(dashboardPlansFallback<T>(options, error));
+      if (sourceKey === "chemicals") return wait(chemicalsFallback<T>(options, error));
       throw error;
     });
   },

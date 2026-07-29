@@ -1,9 +1,66 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+
+INCIDENT_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def _incident_day(reported_at: str) -> str:
+    value = datetime.fromisoformat(reported_at.replace("Z", "+00:00"))
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=INCIDENT_TIMEZONE)
+    return value.astimezone(INCIDENT_TIMEZONE).strftime("%Y%m%d")
+
+
+def next_incident_no(connection: sqlite3.Connection, reported_at: str) -> str:
+    day = _incident_day(reported_at)
+    row = connection.execute(
+        """
+        SELECT MAX(CAST(SUBSTR(incident_no, 13) AS INTEGER)) AS sequence
+        FROM emergency_incidents
+        WHERE incident_no LIKE ?
+        """,
+        (f"SJ-{day}-%",),
+    ).fetchone()
+    sequence = (row["sequence"] or 0) + 1
+    return f"SJ-{day}-{sequence:04d}"
+
+
+def _ensure_incident_numbers(connection: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(emergency_incidents)")}
+    if "incident_no" not in columns:
+        connection.execute("ALTER TABLE emergency_incidents ADD COLUMN incident_no TEXT")
+
+    sequences: dict[str, int] = {}
+    rows = connection.execute(
+        "SELECT id, incident_no, reported_at FROM emergency_incidents ORDER BY reported_at, id"
+    ).fetchall()
+    for row in rows:
+        match = re.fullmatch(r"SJ-(\d{8})-(\d{4})", row["incident_no"] or "")
+        if match:
+            sequences[match.group(1)] = max(sequences.get(match.group(1), 0), int(match.group(2)))
+
+    for row in rows:
+        if row["incident_no"]:
+            continue
+        day = _incident_day(row["reported_at"])
+        sequences[day] = sequences.get(day, 0) + 1
+        connection.execute(
+            "UPDATE emergency_incidents SET incident_no = ? WHERE id = ?",
+            (f"SJ-{day}-{sequences[day]:04d}", row["id"]),
+        )
+
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_emergency_incidents_incident_no ON emergency_incidents (incident_no)"
+    )
+    connection.commit()
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -37,6 +94,7 @@ def connect(path: Path) -> sqlite3.Connection:
         );
         CREATE TABLE IF NOT EXISTS emergency_incidents (
           id TEXT PRIMARY KEY,
+          incident_no TEXT,
           title TEXT NOT NULL,
           type TEXT NOT NULL,
           location TEXT NOT NULL,
@@ -69,6 +127,7 @@ def connect(path: Path) -> sqlite3.Connection:
         );
         """
     )
+    _ensure_incident_numbers(connection)
     return connection
 
 
@@ -102,6 +161,7 @@ def row_to_incident(row: sqlite3.Row) -> dict[str, Any]:
     reported_at = row["reported_at"]
     return {
         "id": row["id"],
+        "incidentNo": row["incident_no"],
         "title": row["title"],
         "type": row["type"],
         "level": "high",

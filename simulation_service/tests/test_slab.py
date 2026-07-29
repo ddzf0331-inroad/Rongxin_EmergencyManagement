@@ -1,7 +1,31 @@
 import unittest
 
-from simulation_service.slab import is_available, parse_ground_table, run_slab, threshold_polygon
+from simulation_service.slab import build_input, is_available, parse_ground_table, run_slab, threshold_polygon
 from simulation_service.models import simulate
+
+
+class SlabInputTests(unittest.TestCase):
+    def test_input_uses_integer_control_fields_and_decimal_real_fields(self):
+        chemical = {
+            "molarMassKgMol": 0.03408, "vaporHeatCapacityJkgK": 1010.0,
+            "boilingPointK": 212.9, "latentHeatJkg": 548000.0,
+            "liquidHeatCapacityJkgK": 2400.0, "liquidDensityKgM3": 964.0,
+        }
+        source = {
+            "releaseKind": "gas", "liquidMassFraction": 0.0, "temperatureK": 298.15,
+            "massRateKgS": 1.0, "areaM2": 0.00007853981633974484, "durationS": 600.0,
+            "instantaneousMassKg": 0.0, "heightM": 1.0,
+        }
+        weather = {
+            "surfaceRoughnessM": 0.3, "windMeasurementHeightM": 10.0, "windSpeedMS": 3.0,
+            "temperatureK": 298.15, "relativeHumidityPct": 60.0, "stabilityClass": "D",
+        }
+        lines = build_input(chemical, source, weather).splitlines()
+        self.assertEqual((lines[0], lines[1], lines[28]), ("2", "1", "4"))
+        self.assertEqual(lines[12], "1.0")
+        self.assertEqual(lines[13], "0.00007853981633974484")
+        self.assertEqual(lines[14], "600.0")
+        self.assertTrue(all("e" not in line.lower() for line in lines))
 
 
 @unittest.skipUnless(is_available(), "platform SLAB binary not installed")
@@ -56,6 +80,67 @@ class SlabTests(unittest.TestCase):
         distances = [zone["maxDownwindDistanceM"] for zone in result["zones"]]
         self.assertLessEqual(distances[0], distances[1])
         self.assertLessEqual(distances[1], distances[2])
+
+    def test_hydrogen_sulfide_small_orifice_end_to_end(self):
+        chemical = {
+            "id": "h2s-test", "name": "硫化氢", "cas": "7783-06-4", "phase": "gas",
+            "molarMassKgMol": 0.03408, "gasDensityKgM3": 1.36, "liquidDensityKgM3": 964.0,
+            "boilingPointK": 212.9, "vaporPressurePa": 1880000.0,
+            "vaporHeatCapacityJkgK": 1010.0, "liquidHeatCapacityJkgK": 2400.0,
+            "latentHeatJkg": 548000.0, "gamma": 1.32,
+            "erpg1Ppm": 0.1, "erpg2Ppm": 30.0, "erpg3Ppm": 100.0, "erpgUnit": "ppm",
+            "erpgSource": "test", "erpgVersion": "test", "propertySource": "test", "propertyVersion": "test",
+        }
+        body = {
+            "scenario": {
+                "releaseType": "pressurizedGas", "inventoryKg": 100.0, "isolationTimeS": 600.0,
+                "releaseTemperatureK": 298.15, "releaseHeightM": 1.0, "holeDiameterM": 0.01,
+                "vesselPressurePa": 800000.0, "sourceCoordinate": {"eastM": 0.0, "northM": 0.0},
+            },
+            "weather": {
+                "windSpeedMS": 3.0, "windDirectionDeg": 45.0, "temperatureK": 298.15,
+                "pressurePa": 101325.0, "relativeHumidityPct": 60.0, "stabilityClass": "D",
+                "surfaceRoughnessM": 0.3, "windMeasurementHeightM": 10.0,
+                "source": "test", "corrected": False,
+            },
+        }
+        _, result = simulate(body, chemical)
+        self.assertEqual(result["modelRoute"]["model"], "slab")
+        self.assertEqual(len(result["zones"]), 3)
+        self.assertTrue(all(zone["maxDownwindDistanceM"] > 0 for zone in result["zones"]))
+
+    def test_hydrogen_sulfide_instantaneous_release_end_to_end(self):
+        chemical = {
+            "id": "h2s-test", "name": "硫化氢", "cas": "7783-06-4", "phase": "gas",
+            "molarMassKgMol": 0.03408, "gasDensityKgM3": 1.36, "liquidDensityKgM3": 964.0,
+            "boilingPointK": 212.9, "vaporPressurePa": 1880000.0,
+            "vaporHeatCapacityJkgK": 1010.0, "liquidHeatCapacityJkgK": 2400.0,
+            "latentHeatJkg": 548000.0, "gamma": 1.32,
+            "erpg1Ppm": 0.1, "erpg2Ppm": 30.0, "erpg3Ppm": 100.0, "erpgUnit": "ppm",
+            "erpgSource": "test", "erpgVersion": "test", "propertySource": "test", "propertyVersion": "test",
+        }
+        body = {
+            "scenario": {
+                "releaseType": "instantaneous", "inventoryKg": 1100.0,
+                "releaseTemperatureK": 298.15, "releaseHeightM": 1.0,
+                "sourceCoordinate": {"eastM": 0.0, "northM": 0.0},
+            },
+            "weather": {
+                "windSpeedMS": 3.0, "windDirectionDeg": 45.0, "temperatureK": 298.15,
+                "pressurePa": 101325.0, "relativeHumidityPct": 60.0, "stabilityClass": "D",
+                "surfaceRoughnessM": 0.3, "windMeasurementHeightM": 10.0,
+                "source": "test", "corrected": False,
+            },
+        }
+        normalized, result = simulate(body, chemical)
+        source = normalized["sourceTerm"]
+        self.assertEqual(result["modelRoute"]["model"], "slab")
+        self.assertEqual(source["massRateKgS"], 0.0)
+        self.assertEqual(source["durationS"], 0.0)
+        self.assertAlmostEqual(source["areaM2"], 789.6697202536956)
+        distances = [zone["maxDownwindDistanceM"] for zone in result["zones"]]
+        self.assertEqual(distances, [454.0, 779.0, 8910.0])
+        self.assertTrue(all(zone["areaM2"] > 0 for zone in result["zones"]))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +29,18 @@ def is_available() -> bool:
     return binary.is_file() and os.access(binary, os.X_OK)
 
 
-def _number(value: float) -> str:
-    return f"{value:.8g}"
+def _number(value: float, integer: bool = False) -> str:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("SLAB input values must be finite numbers")
+    if integer:
+        if not number.is_integer():
+            raise ValueError("SLAB integer input values must be whole numbers")
+        return str(int(number))
+    if number == 0:
+        return "0.0"
+    text = format(Decimal(str(number)), "f")
+    return text if "." in text else f"{text}.0"
 
 
 def build_input(chemical: dict[str, Any], source: dict[str, float], weather: dict[str, Any]) -> str:
@@ -48,7 +59,7 @@ def build_input(chemical: dict[str, Any], source: dict[str, float], weather: dic
         ord(weather["stabilityClass"].upper()) - ord("A") + 1,
         -1.0,
     )
-    lines = [_number(value) for value in values]
+    lines = [_number(value, integer=index in {0, 1, 28}) for index, value in enumerate(values)]
     return "\n".join(lines) + "\n"
 
 
@@ -65,7 +76,9 @@ def run_slab(chemical: dict[str, Any], source: dict[str, float], weather: dict[s
         output = work / "predict"
         if completed.returncode != 0 or not output.exists():
             detail = (completed.stderr or completed.stdout or "no output").strip()
-            raise RuntimeError(f"SLAB failed with code {completed.returncode}: {detail[:500]}")
+            if "Bad value during floating point read" in detail:
+                raise RuntimeError("SLAB 重气模型无法读取计算输入，请检查化学品物性及泄漏参数")
+            raise RuntimeError(f"SLAB 重气模型执行失败（退出码 {completed.returncode}）")
         return output.read_text(encoding="latin-1")
 
 

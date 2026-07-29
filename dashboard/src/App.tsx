@@ -213,6 +213,21 @@ function planStatusText(status: unknown) {
   return labels[value] ?? value;
 }
 
+function shortPlanTypeText(type: unknown) {
+  const labels: Record<string, string> = {
+    comprehensive: "综合预案",
+    special: "专项预案",
+    on_site: "现场处置方案",
+    综合预案: "综合预案",
+    专项预案: "专项预案",
+    综合应急预案: "综合预案",
+    专项应急预案: "专项预案",
+    现场处置方案: "现场处置方案",
+  };
+  const value = textValue(type);
+  return labels[value] ?? value;
+}
+
 function isPublishedPlanStatus(status: unknown) {
   return ["published", "已发布"].includes(textValue(status));
 }
@@ -326,7 +341,6 @@ const externalPopupSpecs: Record<"materials" | "drills" | "hazards" | "dashboard
       { key: "area", label: "区域" },
       { key: "owner", label: "责任人" },
       { key: "medium", label: "危险介质" },
-      { key: "status", label: "状态" },
     ],
   },
   dashboardPlans: {
@@ -991,12 +1005,14 @@ function EmergencyResponsePage({
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | undefined>();
   const [selectedVideo, setSelectedVideo] = useState<VideoChannel | null>(null);
   const [infoPopup, setInfoPopup] = useState<InfoPopupData | null>(null);
-  const [msdsKeyword, setMsdsKeyword] = useState("");
-  const [msdsTab, setMsdsTab] = useState<"properties" | "handling">("properties");
   const [plans, setPlans] = useState<RelatedPlan[]>([]);
+  const [displayedChemicalIds, setDisplayedChemicalIds] = useState<string[]>([]);
+  const [activeChemicalIndex, setActiveChemicalIndex] = useState(0);
+  const [displayedCaseIds, setDisplayedCaseIds] = useState<string[]>([]);
+  const [activeCaseIndex, setActiveCaseIndex] = useState(0);
   const [displayedPlanIds, setDisplayedPlanIds] = useState<string[]>([]);
   const [displayedVideoIds, setDisplayedVideoIds] = useState<string[]>([]);
-  const [selectionPopup, setSelectionPopup] = useState<"plans" | "videos" | null>(null);
+  const [selectionPopup, setSelectionPopup] = useState<"chemicals" | "cases" | "plans" | "videos" | null>(null);
   const [terminating, setTerminating] = useState(false);
   const [terminationOpen, setTerminationOpen] = useState(false);
   const [selectedTerminationReasons, setSelectedTerminationReasons] = useState<string[]>([]);
@@ -1042,6 +1058,18 @@ function EmergencyResponsePage({
     setDisplayedPlanIds(nextPlans.slice(0, 5).map((plan) => plan.id));
   }, [responsePlanSource.result]);
 
+  useEffect(() => {
+    const nextChemicals = chemicalSource.result?.data.list;
+    if (!nextChemicals || displayedChemicalIds.length) return;
+    setDisplayedChemicalIds(nextChemicals.slice(0, 1).map((record) => record.id));
+  }, [chemicalSource.result, displayedChemicalIds.length]);
+
+  useEffect(() => {
+    const nextCases = caseSource.result?.data.list;
+    if (!nextCases || displayedCaseIds.length) return;
+    setDisplayedCaseIds(nextCases.slice(0, 1).map((record) => record.id));
+  }, [caseSource.result, displayedCaseIds.length]);
+
   const currentTime = useClock(snapshot?.updatedAt);
 
   const pointCounts = useMemo(() => {
@@ -1083,10 +1111,10 @@ function EmergencyResponsePage({
   const displayedVideos = snapshot.videoChannels.filter((channel) => displayedVideoIds.includes(channel.id)).slice(0, 4);
   const msdsRecords = chemicalSource.result?.data.list ?? [];
   const caseRecords = caseSource.result?.data.list ?? [];
-  const filteredMsds = msdsRecords.filter((record) =>
-    `${record.name}${record.alias}${record.hazardClass}`.includes(msdsKeyword.trim()),
-  );
-  const activeMsds = filteredMsds[0] ?? msdsRecords[0];
+  const displayedChemicals = msdsRecords.filter((record) => displayedChemicalIds.includes(record.id));
+  const displayedCases = caseRecords.filter((record) => displayedCaseIds.includes(record.id));
+  const activeMsds = displayedChemicals[activeChemicalIndex] ?? displayedChemicals[0];
+  const activeCase = displayedCases[activeCaseIndex] ?? displayedCases[0];
   const currentVideoPoint =
     selectedPoint?.layer === "camera"
       ? selectedPoint
@@ -1095,6 +1123,16 @@ function EmergencyResponsePage({
   const simulationSourcePoint =
     snapshot.mapPoints.find((point) => point.layer === "hazard" && point.name.includes(snapshot.incident.location)) ??
     snapshot.mapPoints.find((point) => point.layer === "hazard");
+
+  const switchChemical = (offset: number) => {
+    if (displayedChemicals.length <= 1) return;
+    setActiveChemicalIndex((current) => (current + offset + displayedChemicals.length) % displayedChemicals.length);
+  };
+
+  const switchCase = (offset: number) => {
+    if (displayedCases.length <= 1) return;
+    setActiveCaseIndex((current) => (current + offset + displayedCases.length) % displayedCases.length);
+  };
 
   const openPlanPopup = (plan: RelatedPlan) => {
     if (openThirdPartyDetail(plan.detailUrl)) return;
@@ -1205,48 +1243,51 @@ function EmergencyResponsePage({
           <Panel
             title="化学特性（MSDS）"
             icon={<FlaskConical size={20} />}
-            action={<PanelIconButton title="新增化学品" />}
+            action={
+              <PanelIconButton
+                title="新增化学品"
+                onClick={() => {
+                  setInfoPopup(null);
+                  setSelectionPopup("chemicals");
+                }}
+              />
+            }
           >
             <div className="msds-panel">
               {chemicalSource.result?.stale ? (
                 <div className="external-source-note external-source-note--stale">化学品数据为最近成功缓存</div>
               ) : null}
-              <div className="segmented-tabs">
-                <button
-                  className={msdsTab === "properties" ? "is-active" : ""}
-                  type="button"
-                  onClick={() => setMsdsTab("properties")}
-                >
-                  化学特性
-                </button>
-                <button
-                  className={msdsTab === "handling" ? "is-active" : ""}
-                  type="button"
-                  onClick={() => setMsdsTab("handling")}
-                >
-                  应急处置
-                </button>
-              </div>
-              <label className="search-box search-box--inline">
-                <input
-                  value={msdsKeyword}
-                  onChange={(event) => setMsdsKeyword(event.target.value)}
-                  placeholder="请输入化学品名称、别名搜索"
-                  data-testid="msds-search"
-                />
-                <Search size={17} />
-              </label>
               {activeMsds ? (
                 <div className="msds-card">
+                  <div className="card-switcher">
+                    <button type="button" onClick={() => switchChemical(-1)} disabled={displayedChemicals.length <= 1} title="上一种化学品">
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span>{activeChemicalIndex + 1}/{displayedChemicals.length}</span>
+                    <button type="button" onClick={() => switchChemical(1)} disabled={displayedChemicals.length <= 1} title="下一种化学品">
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
                   <p>
-                    <span>名称/别名：</span>
+                    <span>化学品名称：</span>
+                    {activeMsds.name}
+                  </p>
+                  <p>
+                    <span>别名：</span>
                     {activeMsds.alias}
                   </p>
                   <p>
                     <span>危险类别：</span>
                     <b>{activeMsds.hazardClass}</b>
                   </p>
-                  <p>{msdsTab === "properties" ? activeMsds.danger : activeMsds.emergencyMeasure}</p>
+                  <p>
+                    <span>危险描述：</span>
+                    {activeMsds.danger}
+                  </p>
+                  <p>
+                    <span>应急处置：</span>
+                    {activeMsds.emergencyMeasure}
+                  </p>
                   <button type="button" onClick={() => {
                     if (!openThirdPartyDetail(activeMsds.detailUrl)) openMsdsPopup(activeMsds);
                   }}>
@@ -1258,47 +1299,68 @@ function EmergencyResponsePage({
               ) : chemicalSource.error ? (
                 <div className="empty-hint external-empty-error">{chemicalSource.error}</div>
               ) : (
-                <div className="empty-hint">未找到匹配化学品</div>
+                <div className="empty-hint">未选择化学品</div>
               )}
             </div>
           </Panel>
 
-          <Panel title="典型案例" icon={<BookOpen size={20} />} action={<PanelIconButton title="新增案例" />}>
+          <Panel
+            title="典型案例"
+            icon={<BookOpen size={20} />}
+            action={
+              <PanelIconButton
+                title="新增案例"
+                onClick={() => {
+                  setInfoPopup(null);
+                  setSelectionPopup("cases");
+                }}
+              />
+            }
+          >
             <div className="case-list">
               {caseSource.result?.stale ? (
                 <div className="external-source-note external-source-note--stale">案例数据为最近成功缓存</div>
               ) : null}
-              {caseRecords.map((item) => (
-                <article className="case-card" key={item.id}>
+              {activeCase ? (
+                <article className="case-card" key={activeCase.id}>
+                  <div className="card-switcher">
+                    <button type="button" onClick={() => switchCase(-1)} disabled={displayedCases.length <= 1} title="上一个案例">
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span>{activeCaseIndex + 1}/{displayedCases.length}</span>
+                    <button type="button" onClick={() => switchCase(1)} disabled={displayedCases.length <= 1} title="下一个案例">
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
                   <p>
                     <span>案例名称：</span>
-                    {item.title}
+                    {activeCase.title}
                   </p>
                   <p>
                     <span>事故类型：</span>
-                    <b>{item.accidentType}</b>
+                    <b>{activeCase.accidentType}</b>
                   </p>
                   <p>
                     <span>事故级别：</span>
-                    <strong>{item.level}</strong>
+                    <strong>{activeCase.level}</strong>
                   </p>
                   <p>
                     <span>事故描述：</span>
-                    {item.occurredAt}，{item.summary}
+                    {activeCase.occurredAt}，{activeCase.summary}
                   </p>
                   <button type="button" onClick={() => {
-                    if (!openThirdPartyDetail(item.detailUrl)) setInfoPopup(caseToPopup(item));
+                    if (!openThirdPartyDetail(activeCase.detailUrl)) setInfoPopup(caseToPopup(activeCase));
                   }}>
                     查看详情
                   </button>
                 </article>
-              ))}
+              ) : null}
               {caseSource.loading ? <div className="empty-hint">正在加载第三方案例数据</div> : null}
               {!caseSource.loading && caseSource.error ? (
                 <div className="empty-hint external-empty-error">{caseSource.error}</div>
               ) : null}
-              {!caseSource.loading && !caseSource.error && caseRecords.length === 0 ? (
-                <div className="empty-hint">暂无典型案例</div>
+              {!caseSource.loading && !caseSource.error && !activeCase ? (
+                <div className="empty-hint">未选择典型案例</div>
               ) : null}
             </div>
           </Panel>
@@ -1455,6 +1517,28 @@ function EmergencyResponsePage({
         事故模拟
       </a>
       {infoPopup ? <InfoPopup popup={infoPopup} onClose={() => setInfoPopup(null)} /> : null}
+      {selectionPopup === "chemicals" ? (
+        <ChemicalSelectionPopup
+          records={msdsRecords}
+          selectedIds={displayedChemicalIds}
+          onClose={() => setSelectionPopup(null)}
+          onChange={(ids) => {
+            setDisplayedChemicalIds(ids);
+            setActiveChemicalIndex(0);
+          }}
+        />
+      ) : null}
+      {selectionPopup === "cases" ? (
+        <CaseSelectionPopup
+          records={caseRecords}
+          selectedIds={displayedCaseIds}
+          onClose={() => setSelectionPopup(null)}
+          onChange={(ids) => {
+            setDisplayedCaseIds(ids);
+            setActiveCaseIndex(0);
+          }}
+        />
+      ) : null}
       {selectionPopup === "plans" ? (
         <PlanSelectionPopup
           plans={plans}
@@ -1898,13 +1982,167 @@ function PlanSelectionPopup({
                 <span className="selection-row__check">{checked ? <CheckCircle2 size={17} /> : null}</span>
                 <span className="selection-row__main">
                   <b>{plan.name}</b>
-                  <em>{plan.category} / {plan.level} / {plan.owner}</em>
+                  <em>{shortPlanTypeText(plan.category)}</em>
                 </span>
-                <strong className={plan.status === "已启动" ? "is-ok" : ""}>{plan.status}</strong>
+                <strong className={isPublishedPlanStatus(plan.status) || plan.status === "已启动" ? "is-ok" : ""}>
+                  {planStatusText(plan.status)}
+                </strong>
               </label>
             );
           })}
           {visiblePlans.length === 0 ? <div className="empty-hint">未找到匹配预案</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChemicalSelectionPopup({
+  records,
+  selectedIds,
+  onChange,
+  onClose,
+}: {
+  records: MsdsRecord[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const [keyword, setKeyword] = useState("");
+
+  const toggleRecord = (id: string) => {
+    const nextIds = new Set(selectedIds.length ? selectedIds : records.slice(0, 1).map((record) => record.id));
+    if (nextIds.has(id)) {
+      if (nextIds.size <= 1) return;
+      nextIds.delete(id);
+    } else {
+      nextIds.add(id);
+    }
+    onChange(records.filter((record) => nextIds.has(record.id)).map((record) => record.id));
+  };
+
+  const keywordText = keyword.trim().toLocaleLowerCase();
+  const visibleRecords = keywordText
+    ? records.filter((record) => `${record.name}${record.alias}`.toLocaleLowerCase().includes(keywordText))
+    : records;
+
+  return (
+    <div className="panel-popup panel-popup--table selection-popup">
+      <div className="floating-title">
+        <FlaskConical size={18} />
+        选择展示化学品
+        <button type="button" onClick={onClose} title="关闭">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="selection-popup__body">
+        <label className="search-box selection-search">
+          <input
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="请输入化学品名称或别名搜索"
+            data-testid="chemical-selector-search"
+          />
+          <Search size={17} />
+        </label>
+        <div className="selection-popup__status">已选择 {selectedIds.length} 种，点击即更新页面展示，至少保留 1 种</div>
+        <div className="selection-list">
+          {visibleRecords.map((record) => {
+            const checked = selectedIds.includes(record.id);
+            return (
+              <label className={`selection-row ${checked ? "is-checked" : ""}`} key={record.id}>
+                <input
+                  checked={checked}
+                  disabled={checked && selectedIds.length === 1}
+                  type="checkbox"
+                  onChange={() => toggleRecord(record.id)}
+                />
+                <span className="selection-row__check">{checked ? <CheckCircle2 size={17} /> : null}</span>
+                <span className="selection-row__main">
+                  <b>{record.name}</b>
+                  <em>{record.alias}</em>
+                </span>
+                <strong>{record.hazardClass}</strong>
+              </label>
+            );
+          })}
+          {visibleRecords.length === 0 ? <div className="empty-hint">未找到匹配化学品</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CaseSelectionPopup({
+  records,
+  selectedIds,
+  onChange,
+  onClose,
+}: {
+  records: EmergencyResponseSnapshot["cases"];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const [keyword, setKeyword] = useState("");
+
+  const toggleRecord = (id: string) => {
+    const nextIds = new Set(selectedIds.length ? selectedIds : records.slice(0, 1).map((record) => record.id));
+    if (nextIds.has(id)) {
+      if (nextIds.size <= 1) return;
+      nextIds.delete(id);
+    } else {
+      nextIds.add(id);
+    }
+    onChange(records.filter((record) => nextIds.has(record.id)).map((record) => record.id));
+  };
+
+  const keywordText = keyword.trim().toLocaleLowerCase();
+  const visibleRecords = keywordText
+    ? records.filter((record) => record.accidentType.toLocaleLowerCase().includes(keywordText))
+    : records;
+
+  return (
+    <div className="panel-popup panel-popup--table selection-popup">
+      <div className="floating-title">
+        <BookOpen size={18} />
+        选择展示案例
+        <button type="button" onClick={onClose} title="关闭">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="selection-popup__body">
+        <label className="search-box selection-search">
+          <input
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="请输入事故类型搜索"
+            data-testid="case-selector-search"
+          />
+          <Search size={17} />
+        </label>
+        <div className="selection-popup__status">已选择 {selectedIds.length} 个，点击即更新页面展示，至少保留 1 个</div>
+        <div className="selection-list">
+          {visibleRecords.map((record) => {
+            const checked = selectedIds.includes(record.id);
+            return (
+              <label className={`selection-row ${checked ? "is-checked" : ""}`} key={record.id}>
+                <input
+                  checked={checked}
+                  disabled={checked && selectedIds.length === 1}
+                  type="checkbox"
+                  onChange={() => toggleRecord(record.id)}
+                />
+                <span className="selection-row__check">{checked ? <CheckCircle2 size={17} /> : null}</span>
+                <span className="selection-row__main">
+                  <b>{record.title}</b>
+                  <em>{record.accidentType}</em>
+                </span>
+                <strong>{record.level}</strong>
+              </label>
+            );
+          })}
+          {visibleRecords.length === 0 ? <div className="empty-hint">未找到匹配案例</div> : null}
         </div>
       </div>
     </div>
