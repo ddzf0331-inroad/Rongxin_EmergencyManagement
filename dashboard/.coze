@@ -1,0 +1,8 @@
+[project]
+sub_id = "cfca7df0"
+name = "emergency-dashboard"
+requires = ["nodejs-24", "python-3.12"]
+project_type = "web"
+
+[preview]
+preview_enable = "enabled"
