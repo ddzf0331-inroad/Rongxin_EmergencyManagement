@@ -1,0 +1,14 @@
+.DS_Store
+
+dashboard/node_modules/
+dashboard/.npm-cache/
+dashboard/dist/
+
+build/
+release/
+
+__pycache__/
+*.py[cod]
+
+*.sqlite3-shm
+*.sqlite3-wal
