@@ -3,6 +3,7 @@ sub_id = "cfca7df0"
 name = "emergency-dashboard"
 requires = ["nodejs-24", "python-3.12"]
 project_type = "web"
+entrypoint = "run_simulation_service.py"
 
 [preview]
 preview_enable = "enabled"
