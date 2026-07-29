@@ -15,7 +15,7 @@ SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
     "materials": ("id", "name", "location", "expireAt", "owner", "expiryStatus"),
     "drills": ("id", "time", "department", "unit", "planName", "status"),
     "hazards": ("id", "level", "name", "area", "owner", "medium", "status"),
-    "dashboardPlans": ("id", "name", "type", "version", "owner", "status"),
+    "dashboardPlans": ("id", "name", "type", "applicableArea", "status"),
     "chemicals": ("id", "name", "alias", "hazardClass", "danger", "emergencyMeasure", "detail"),
     "cases": ("id", "title", "accidentType", "level", "occurredAt", "summary"),
     "responsePlans": ("id", "name", "category", "level", "owner", "status"),
@@ -45,8 +45,8 @@ DEFAULT_ITEM_PATHS = {
         "owner": "owner", "medium": "medium", "status": "status",
     },
     "dashboardPlans": {
-        "id": "id", "name": "name", "type": "type", "version": "version",
-        "owner": "owner", "status": "status",
+        "id": "id", "name": "name", "type": "type", "applicableArea": "applicableArea",
+        "status": "status",
     },
     "chemicals": {
         "id": "id", "name": "name", "alias": "alias", "hazardClass": "hazardClass",
