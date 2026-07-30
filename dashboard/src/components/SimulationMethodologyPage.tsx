@@ -34,7 +34,7 @@ const references = [
   ["User’s Manual for SLAB: An Atmospheric Dispersion Model for Denser-than-Air Releases", "EPA，1990", "重气扩散模型", "路由至 SLAB 时使用"],
   ["ALOHA 5.4.4 Technical Documentation，NOAA Technical Memorandum NOS OR&R 43", "2013", "源项、扩散方法及模型限制的对比资料", "技术说明参考，不是代码依赖"],
   ["ALOHA User’s Manual", "EPA/NOAA，2007", "应急模型使用方法与限制说明", "文档结构参考"],
-  ["AIHA ERPG 数据", "以化学品记录中的版本为准", "ERPG-1/2/3 阈值", "直接用于后果分区，须逐项复核"],
+  ["AIHA ERPG 数据", "以实际录入值为准", "ERPG-1/2/3 阈值", "直接用于后果分区，须逐项复核"],
   ["Pasquill-Gifford 扩散参数方法", "PG-AQ3046-1.0", "高斯模型的横向和垂直扩散尺度", "直接用于高斯计算"],
 ] as const;
 
@@ -77,7 +77,7 @@ export function SimulationMethodologyPage() {
         <div><Gauge size={19} /><span>计算引擎<small>{engineVersion}</small></span></div>
         <div><GitBranch size={19} /><span>Gaussian 模型<small>PG-AQ3046-1.0</small></span></div>
         <div className={health?.slabAvailable ? "is-available" : "is-unavailable"}><Database size={19} /><span>EPA SLAB-1990<small>{slabStatus}</small></span></div>
-        <div><Clock3 size={19} /><span>说明文档<small>版本 1.0 · 2026-07-21</small></span></div>
+        <div><Clock3 size={19} /><span>说明文档<small>版本 1.1 · 2026-07-30</small></span></div>
       </div>
     </section>
 
@@ -111,7 +111,7 @@ export function SimulationMethodologyPage() {
               <tbody>{references.map((row) => <tr key={row[0]}>{row.map((cell) => <td key={cell}>{cell}</td>)}</tr>)}</tbody>
             </table>
           </div>
-          <p className="methodology-note"><Info size={17} />本页面仅列出参考资料名称及用途，不复制标准或第三方资料正文。化学品物性和 ERPG 阈值的实际来源、版本及复核记录，以本地化学品数据库中的记录为准。</p>
+          <p className="methodology-note"><Info size={17} />本页面仅列出参考资料名称及用途，不复制标准或第三方资料正文。ERPG 阈值以接口或人工录入值为准；内置物性及近似规则由当前计算引擎版本确定。</p>
         </section>
 
         <section id="model-provenance" className="methodology-section methodology-section--provenance">
@@ -170,6 +170,8 @@ export function SimulationMethodologyPage() {
           <ul>
             <li>高斯模型对连续源采用烟羽计算，对瞬时源采用烟团计算，并考虑地面反射、释放高度、风速、稳定度和地表粗糙度。</li>
             <li>SLAB 用于重气地面或高位喷射、液池蒸发及瞬时体积释放。若经许可复核的 SLAB 可执行文件未安装或运行失败，计算明确终止，不自动退回高斯模型。</li>
+            <li>氨、硫化氢、氯气和二氧化硫按 CAS 使用内置固定物性，不随输入温度修正。</li>
+            <li>其他气体按非冷凝理想气体近似，绝热指数取 <code>1.4</code>，密度和气相热容根据分子量及计算工况推导；重气仍可进入 SLAB。</li>
             <li>每次运行记录气体密度、空气密度、摩擦速度、Richardson 数、路由结果和模型版本。</li>
           </ul>
         </section>
@@ -177,7 +179,7 @@ export function SimulationMethodologyPage() {
         <section id="consequence-zones" className="methodology-section">
           <h2><MapPinned size={22} /><span><em>07</em>后果分区方法</span></h2>
           <ul>
-            <li>ERPG 阈值来自本地化学品记录，必须同时保存数值、单位、来源和版本。</li>
+            <li>ERPG 阈值来自接口或本地化学品记录，三级数值和 ppm 单位必须完整；来源与版本可选。</li>
             <li>系统按当前环境温度和压力将 ppm 换算为质量浓度。</li>
             <li>分别计算 ERPG-3、ERPG-2、ERPG-1 等值范围，并生成红、黄、蓝三级嵌套多边形。</li>
             <li>最大包络表示计算时段内任一时刻可能达到相应阈值的范围，不代表整个区域在同一时刻同时达到该浓度。</li>
@@ -216,12 +218,12 @@ export function SimulationMethodologyPage() {
           <h2><Database size={22} /><span><em>10</em>版本与追溯</span></h2>
           <ul>
             <li>当前计算引擎：<code>{engineVersion}</code>；Gaussian 模型：<code>PG-AQ3046-1.0</code>；重气模型：<code>EPA-SLAB-1990</code>。</li>
-            <li>每次计算保存原始输入、SI 标准化参数、化学品版本、气象来源、人工修正状态、模型路由、结果和错误信息。</li>
-            <li>说明文档版本 <code>1.0</code>，适用计算引擎 <code>1.0.x</code>，复核日期 <code>2026-07-21</code>。</li>
+            <li>每次计算保存原始输入、解析后的 SI 物性、物性模式、气象来源、人工修正状态、模型路由、结果和错误信息。</li>
+            <li>说明文档版本 <code>1.1</code>，适用计算引擎 <code>1.1.x</code>，复核日期 <code>2026-07-30</code>。</li>
           </ul>
         </section>
 
-        <footer className="methodology-footer">事故后果模拟计算方法与使用声明 · 文档版本 1.0</footer>
+        <footer className="methodology-footer">事故后果模拟计算方法与使用声明 · 文档版本 1.1</footer>
       </article>
     </div>
   </main>;

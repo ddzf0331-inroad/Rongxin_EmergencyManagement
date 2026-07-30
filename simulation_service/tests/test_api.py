@@ -95,6 +95,22 @@ class ApiTests(unittest.TestCase):
         _, chemicals = self.get_json("/api/accident-simulation/chemicals")
         self.assertEqual(chemicals[0]["cas"], "7664-41-7")
 
+    def test_minimal_builtin_chemical_can_be_saved_without_sources_or_properties(self):
+        status, chemical = self.post_json("/api/accident-simulation/chemicals", {
+            "id": "chemical-sulfur-dioxide",
+            "name": "二氧化硫",
+            "cas": "7446-09-5",
+            "phase": "gas",
+            "molarMassKgMol": 0.064063,
+            "erpg1Ppm": 0.3,
+            "erpg2Ppm": 3.0,
+            "erpg3Ppm": 15.0,
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(chemical["erpgUnit"], "ppm")
+        self.assertEqual(chemical["propertySource"], "")
+        self.assertNotIn("liquidDensityKgM3", chemical)
+
     def test_run_is_persisted_and_queryable(self):
         body = {
             "chemicalId": "chemical-ammonia",
@@ -112,9 +128,12 @@ class ApiTests(unittest.TestCase):
         status, result = self.post_json("/api/accident-simulation/runs", body)
         self.assertEqual(status, 200)
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["engineVersion"], "1.1.0")
+        self.assertEqual(result["propertyMode"], "builtin")
         _, stored = self.get_json(f"/api/accident-simulation/runs/{result['id']}")
         self.assertTrue(stored["weatherCorrected"])
         self.assertEqual(stored["result"]["zones"], result["zones"])
+        self.assertEqual(stored["normalizedInput"]["chemical"]["vaporPressurePa"], 994427.0)
 
     def test_emergency_incident_lifecycle_is_persisted(self):
         status, incident = self.post_json("/api/emergency/incidents", {

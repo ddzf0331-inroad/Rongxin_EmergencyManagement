@@ -27,6 +27,14 @@ SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
     "responsePlans": ("id", "name", "category", "level", "owner", "status"),
 }
 
+OPTIONAL_SOURCE_FIELDS: dict[str, set[str]] = {
+    "chemicals": {
+        "gasDensityKgM3", "liquidDensityKgM3", "boilingPointK", "vaporPressurePa",
+        "vaporHeatCapacityJkgK", "liquidHeatCapacityJkgK", "latentHeatJkg", "gamma",
+        "erpgSource", "erpgVersion", "propertySource", "propertyVersion",
+    },
+}
+
 SOURCE_LABELS = {
     "materials": "应急物资",
     "drills": "应急演练",
@@ -237,7 +245,7 @@ def validate_api_config(value: Any, *, require_base_url: bool = True) -> dict[st
             source["itemPaths"][name] = _validate_mapping_path(
                 item_paths.get(name, ""),
                 f"{SOURCE_LABELS[source_key]}明细字段 {name}",
-                required=True,
+                required=name not in OPTIONAL_SOURCE_FIELDS.get(source_key, set()),
             )
 
         success_value = source_value.get("successValue", 0)
@@ -306,9 +314,18 @@ def normalize_payload(source_key: str, base_url: str, source: dict[str, Any], pa
         row: dict[str, Any] = {}
         for field, path in source["itemPaths"].items():
             try:
-                row[field] = resolve_path(raw_item, path)
+                row[field] = resolve_path(
+                    raw_item, path,
+                    optional=field in OPTIONAL_SOURCE_FIELDS.get(source_key, set()),
+                )
             except ExternalSourceError as error:
                 raise ExternalSourceError(f"第 {index + 1} 条记录的 {field} 映射失败：{error}") from None
+        if source_key == "chemicals":
+            try:
+                row["molarMassKgMol"] = float(row["molarMassKgMol"]) / 1000.0
+            except (TypeError, ValueError):
+                pass
+            row["erpgUnit"] = "ppm"
         row["detailUrl"] = build_detail_url(
             base_url, page_url, source["pagePath"], source["detailIdParam"], row["id"],
         )

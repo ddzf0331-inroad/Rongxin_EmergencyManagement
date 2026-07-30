@@ -5,6 +5,7 @@ from typing import Any
 
 from . import ENGINE_VERSION
 from . import slab
+from .properties import BUILTIN_PROPERTIES, LIQUID_PROPERTY_FIELDS, is_builtin_chemical
 
 R = 8.314462618
 AIR_MOLAR_MASS = 0.0289652
@@ -28,27 +29,75 @@ def require_number(data: dict[str, Any], field: str, positive: bool = True) -> f
 
 
 def validate_chemical(chemical: dict[str, Any]) -> dict[str, Any]:
-    required_text = ("name", "cas", "phase", "erpgSource", "erpgVersion", "propertySource", "propertyVersion")
+    required_text = ("name", "cas", "phase")
     missing = [field for field in required_text if not str(chemical.get(field, "")).strip()]
-    numeric = (
-        "molarMassKgMol", "gasDensityKgM3", "liquidDensityKgM3", "boilingPointK", "vaporPressurePa",
-        "vaporHeatCapacityJkgK", "liquidHeatCapacityJkgK", "latentHeatJkg", "gamma",
-        "erpg1Ppm", "erpg2Ppm", "erpg3Ppm",
-    )
+    numeric = ["molarMassKgMol", "erpg1Ppm", "erpg2Ppm", "erpg3Ppm"]
+    if chemical.get("phase") == "liquefiedGas" and not is_builtin_chemical(chemical):
+        numeric.extend(LIQUID_PROPERTY_FIELDS)
     for field in numeric:
         try:
-            require_number(chemical, field)
+            chemical[field] = require_number(chemical, field)
         except InputError:
             missing.append(field)
     if missing:
         raise InputError("Chemical profile is incomplete", sorted(set(missing)))
+    if chemical["phase"] not in {"gas", "liquefiedGas"}:
+        raise InputError("phase must be gas or liquefiedGas", ["phase"])
     if not chemical["erpg1Ppm"] < chemical["erpg2Ppm"] < chemical["erpg3Ppm"]:
         raise InputError("ERPG thresholds must satisfy ERPG-1 < ERPG-2 < ERPG-3", ["erpg1Ppm", "erpg2Ppm", "erpg3Ppm"])
-    if chemical.get("erpgUnit") != "ppm":
+    chemical["erpgUnit"] = chemical.get("erpgUnit") or "ppm"
+    if chemical["erpgUnit"] != "ppm":
         raise InputError("ERPG unit must be ppm", ["erpgUnit"])
-    if chemical["gamma"] <= 1:
+    if chemical.get("gamma") is not None and chemical["gamma"] <= 1:
         raise InputError("gamma must be greater than 1", ["gamma"])
+    for field in ("erpgSource", "erpgVersion", "propertySource", "propertyVersion"):
+        chemical[field] = str(chemical.get(field, "")).strip()
     return chemical
+
+
+def resolve_chemical_properties(
+    chemical: dict[str, Any], scenario: dict[str, Any], weather: dict[str, Any],
+) -> dict[str, Any]:
+    resolved = validate_chemical(dict(chemical))
+    cas = resolved["cas"].strip()
+    if cas in BUILTIN_PROPERTIES:
+        resolved.update(BUILTIN_PROPERTIES[cas])
+        resolved.update({
+            "propertyMode": "builtin",
+            "propertyApproximate": False,
+            "propertyNote": "内置固定工程物性",
+        })
+        return resolved
+
+    if resolved["phase"] == "gas":
+        if scenario.get("releaseType") == "liquefiedGas":
+            raise InputError(
+                "Ideal-gas approximation cannot be used for a liquefied-gas release",
+                ["releaseType"],
+            )
+        temperature = require_number(scenario, "releaseTemperatureK")
+        molar_mass = resolved["molarMassKgMol"]
+        gamma = 1.4
+        resolved.update({
+            "gasDensityKgM3": weather["pressurePa"] * molar_mass / (R * temperature),
+            "vaporHeatCapacityJkgK": gamma / (gamma - 1.0) * R / molar_mass,
+            "gamma": gamma,
+            "propertyMode": "idealGasApproximation",
+            "propertyApproximate": True,
+            "propertyNote": "近似物性·理想气体（非冷凝纯气相）",
+        })
+        return resolved
+
+    resolved["gasDensityKgM3"] = (
+        weather["pressurePa"] * resolved["molarMassKgMol"]
+        / (R * require_number(scenario, "releaseTemperatureK"))
+    )
+    resolved.update({
+        "propertyMode": "providedLiquid",
+        "propertyApproximate": False,
+        "propertyNote": "用户提供液化气物性",
+    })
+    return resolved
 
 
 def validate_weather(weather: dict[str, Any]) -> dict[str, Any]:
@@ -135,7 +184,7 @@ def source_term(scenario: dict[str, Any], chemical: dict[str, Any], weather: dic
     mass_transfer = require_number({"massTransferCoefficientMS": scenario.get("massTransferCoefficientMS", 0.0)}, "massTransferCoefficientMS", positive=False)
     if mass_transfer < 0:
         raise InputError("massTransferCoefficientMS cannot be negative", ["massTransferCoefficientMS"])
-    vapor_pressure = require_number(scenario, "vaporPressurePa")
+    vapor_pressure = chemical["vaporPressurePa"]
     vapor_density = vapor_pressure * chemical["molarMassKgMol"] / (R * weather["temperatureK"])
     mass_evaporation = max(0.0, mass_transfer * pool_area * vapor_density)
     pool_rate = min(remaining_rate, heat_evaporation + mass_evaporation)
@@ -295,9 +344,9 @@ def _frames(zones: list[dict[str, Any]], source: dict[str, Any], weather: dict[s
 
 
 def simulate(raw: dict[str, Any], chemical: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    chemical = validate_chemical(dict(chemical))
     scenario = dict(raw.get("scenario") or {})
     weather = validate_weather(dict(raw.get("weather") or {}))
+    chemical = resolve_chemical_properties(dict(chemical), scenario, weather)
     source_xy = dict(scenario.get("sourceCoordinate") or {})
     require_number(source_xy, "eastM", positive=False)
     require_number(source_xy, "northM", positive=False)
@@ -345,6 +394,9 @@ def simulate(raw: dict[str, Any], chemical: dict[str, Any]) -> tuple[dict[str, A
     normalized = {"scenario": scenario, "weather": weather, "chemical": chemical, "sourceTerm": source}
     result = {
         "engineVersion": ENGINE_VERSION, "modelRoute": route, "sourceTerm": source,
+        "propertyMode": chemical["propertyMode"],
+        "propertyApproximate": chemical["propertyApproximate"],
+        "propertyNote": chemical["propertyNote"],
         "zones": public_zones, "frames": frames,
         "summary": {"model": route["model"], "releasedMassKg": source["releasedMassKg"], "effectiveDurationS": source["durationS"]},
     }

@@ -2116,6 +2116,7 @@ button {
 .simulation-empty { padding: 18px; color: #6e9aab; text-align: center; border: 1px dashed rgba(75, 167, 200, 0.28); }
 .route-card { display: flex; flex-direction: column; gap: 5px; padding: 11px; border-left: 3px solid #20d0ff; background: rgba(0, 68, 101, 0.3); }
 .route-card span, .route-card small { color: #8cb9c9; }
+.route-card em { align-self: flex-start; padding: 2px 6px; color: #ffd86c; font-size: 10px; font-style: normal; border: 1px solid rgba(255, 196, 0, 0.55); }
 .result-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
 .result-metrics span { padding: 10px; color: #8eb8c7; font-size: 11px; background: rgba(3, 38, 57, 0.7); }
 .result-metrics b { color: white; font-size: 20px; }
@@ -2132,6 +2133,7 @@ button {
 .chemical-card h2 { margin-top: 0; }
 .chemical-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .chemical-grid label { display: flex; flex-direction: column; gap: 5px; color: #98c5d4; font-size: 12px; }
+.chemical-property-note { margin: 12px 0 0; color: #7fb7c9; font-size: 12px; }
 .chemical-card footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .chemical-card footer .is-primary { border-color: #2ad6ff; background: #086b96; }
 

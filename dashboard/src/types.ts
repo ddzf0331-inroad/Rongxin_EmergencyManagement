@@ -67,22 +67,22 @@ export interface ChemicalProfile {
   cas: string;
   phase: "gas" | "liquefiedGas";
   molarMassKgMol: number;
-  gasDensityKgM3: number;
-  liquidDensityKgM3: number;
-  boilingPointK: number;
-  vaporPressurePa: number;
-  vaporHeatCapacityJkgK: number;
-  liquidHeatCapacityJkgK: number;
-  latentHeatJkg: number;
-  gamma: number;
+  gasDensityKgM3?: number;
+  liquidDensityKgM3?: number;
+  boilingPointK?: number;
+  vaporPressurePa?: number;
+  vaporHeatCapacityJkgK?: number;
+  liquidHeatCapacityJkgK?: number;
+  latentHeatJkg?: number;
+  gamma?: number;
   erpg1Ppm: number;
   erpg2Ppm: number;
   erpg3Ppm: number;
   erpgUnit: "ppm";
-  erpgSource: string;
-  erpgVersion: string;
-  propertySource: string;
-  propertyVersion: string;
+  erpgSource?: string;
+  erpgVersion?: string;
+  propertySource?: string;
+  propertyVersion?: string;
   updatedAt?: string;
 }
 
@@ -113,7 +113,6 @@ export interface ReleaseScenario {
   poolAreaM2?: number;
   poolHeatFluxWM2?: number;
   massTransferCoefficientMS?: number;
-  vaporPressurePa?: number;
   sourceCoordinate: { eastM: number; northM: number };
 }
 
@@ -143,6 +142,9 @@ export interface SimulationRun {
   status: "completed" | "failed";
   engineVersion: string;
   chemical: Pick<ChemicalProfile, "id" | "name" | "cas">;
+  propertyMode: "builtin" | "idealGasApproximation" | "providedLiquid";
+  propertyApproximate: boolean;
+  propertyNote: string;
   modelRoute: {
     model: "gaussian" | "slab";
     criterion: string;

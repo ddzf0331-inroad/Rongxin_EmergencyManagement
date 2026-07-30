@@ -23,7 +23,7 @@ const initialScenario: ReleaseScenario = {
   releaseTemperatureK: 298.15, releaseHeightM: 1, holeDiameterM: 0.01,
   vesselPressurePa: 800000, dischargeCoefficient: 0.62,
   poolAreaM2: 20, poolHeatFluxWM2: 500, massTransferCoefficientMS: 0.002,
-  vaporPressurePa: 700000, sourceCoordinate: { eastM: 0, northM: 0 },
+  sourceCoordinate: { eastM: 0, northM: 0 },
 };
 
 function number(value: string) { return Number(value); }
@@ -43,11 +43,12 @@ function Input({ label, value, unit, onChange }: { label: string; value: number;
   return <label className="simulation-field"><span>{label}</span><div><input type="number" step="any" value={value} onChange={(event) => onChange(number(event.target.value))} /><em>{unit}</em></div></label>;
 }
 
-const simulationChemicalNumberFields: Array<[keyof MsdsRecord, string]> = [
-  ["molarMassKgMol", "分子量"], ["gasDensityKgM3", "气体密度"], ["liquidDensityKgM3", "液体密度"],
-  ["boilingPointK", "沸点"], ["vaporPressurePa", "蒸气压"], ["vaporHeatCapacityJkgK", "气相热容"],
-  ["liquidHeatCapacityJkgK", "液相热容"], ["latentHeatJkg", "汽化热"], ["gamma", "绝热指数"],
-  ["erpg1Ppm", "ERPG-1"], ["erpg2Ppm", "ERPG-2"], ["erpg3Ppm", "ERPG-3"],
+const builtinChemicalCas = new Set(["7664-41-7", "7783-06-4", "7782-50-5", "7446-09-5"]);
+
+const liquidChemicalNumberFields: Array<[keyof MsdsRecord, string]> = [
+  ["liquidDensityKgM3", "液体密度"], ["boilingPointK", "沸点"], ["vaporPressurePa", "蒸气压"],
+  ["vaporHeatCapacityJkgK", "气相热容"], ["liquidHeatCapacityJkgK", "液相热容"],
+  ["latentHeatJkg", "汽化热"], ["gamma", "绝热指数"],
 ];
 
 function positiveNumber(value: unknown) {
@@ -77,11 +78,15 @@ function assessSimulationChemical(record: MsdsRecord): { chemical: ChemicalProfi
   if (!record.phase || !String(record.phase).trim()) reasons.push("缺少相态");
   else if (!phase) reasons.push("相态仅支持气体或液化气");
 
-  const missingNumbers: string[] = [];
-  const invalidNumbers: string[] = [];
-  const numbers = simulationChemicalNumberFields.reduce<Partial<Record<keyof MsdsRecord, number>>>((result, [field, label]) => {
+  const requiredNumberFields: Array<[keyof MsdsRecord, string]> = [
+    ["molarMassKgMol", "分子量"], ["erpg1Ppm", "ERPG-1"],
+    ["erpg2Ppm", "ERPG-2"], ["erpg3Ppm", "ERPG-3"],
+    ...(!builtinChemicalCas.has(cas) && phase === "liquefiedGas" ? liquidChemicalNumberFields : []),
+  ];
+  const missingNumbers: string[] = [], invalidNumbers: string[] = [];
+  const numbers = requiredNumberFields.reduce<Partial<Record<keyof MsdsRecord, number>>>((result, [field, label]) => {
     const raw = record[field];
-    const value = positiveNumber(record[field]);
+    const value = positiveNumber(raw);
     if (value !== null) result[field] = value;
     else if (raw === undefined || raw === null || String(raw).trim() === "") missingNumbers.push(label);
     else invalidNumbers.push(label);
@@ -90,13 +95,7 @@ function assessSimulationChemical(record: MsdsRecord): { chemical: ChemicalProfi
   if (missingNumbers.length) reasons.push(`缺少${missingNumbers.join("、")}`);
   if (invalidNumbers.length) reasons.push(`${invalidNumbers.join("、")}必须为大于 0 的数字`);
 
-  const missingSources = [
-    !record.propertySource?.trim() && "物性来源", !record.propertyVersion?.trim() && "物性版本",
-    !record.erpgSource?.trim() && "ERPG 来源", !record.erpgVersion?.trim() && "ERPG 版本",
-  ].filter(Boolean);
-  if (missingSources.length) reasons.push(`缺少${missingSources.join("、")}`);
-  if (!record.erpgUnit) reasons.push("缺少 ERPG 单位");
-  else if (record.erpgUnit !== "ppm") reasons.push("ERPG 单位必须为 ppm");
+  if (record.erpgUnit && record.erpgUnit !== "ppm") reasons.push("ERPG 单位必须为 ppm");
   if (reasons.length) return { chemical: null, reasons };
 
   return { chemical: {
@@ -105,22 +104,23 @@ function assessSimulationChemical(record: MsdsRecord): { chemical: ChemicalProfi
     cas,
     phase: phase!,
     molarMassKgMol: numbers.molarMassKgMol!,
-    gasDensityKgM3: numbers.gasDensityKgM3!,
-    liquidDensityKgM3: numbers.liquidDensityKgM3!,
-    boilingPointK: numbers.boilingPointK!,
-    vaporPressurePa: numbers.vaporPressurePa!,
-    vaporHeatCapacityJkgK: numbers.vaporHeatCapacityJkgK!,
-    liquidHeatCapacityJkgK: numbers.liquidHeatCapacityJkgK!,
-    latentHeatJkg: numbers.latentHeatJkg!,
-    gamma: numbers.gamma!,
+    ...(!builtinChemicalCas.has(cas) && phase === "liquefiedGas" ? {
+      liquidDensityKgM3: numbers.liquidDensityKgM3!,
+      boilingPointK: numbers.boilingPointK!,
+      vaporPressurePa: numbers.vaporPressurePa!,
+      vaporHeatCapacityJkgK: numbers.vaporHeatCapacityJkgK!,
+      liquidHeatCapacityJkgK: numbers.liquidHeatCapacityJkgK!,
+      latentHeatJkg: numbers.latentHeatJkg!,
+      gamma: numbers.gamma!,
+    } : {}),
     erpg1Ppm: numbers.erpg1Ppm!,
     erpg2Ppm: numbers.erpg2Ppm!,
     erpg3Ppm: numbers.erpg3Ppm!,
-    erpgUnit: record.erpgUnit!,
-    erpgSource: record.erpgSource!.trim(),
-    erpgVersion: record.erpgVersion!.trim(),
-    propertySource: record.propertySource!.trim(),
-    propertyVersion: record.propertyVersion!.trim(),
+    erpgUnit: "ppm",
+    erpgSource: record.erpgSource?.trim(),
+    erpgVersion: record.erpgVersion?.trim(),
+    propertySource: record.propertySource?.trim(),
+    propertyVersion: record.propertyVersion?.trim(),
   }, reasons: [] };
 }
 
@@ -132,19 +132,24 @@ function matchesRequestedChemical(chemical: ChemicalProfile, source: MsdsRecord 
 
 function ChemicalEditor({ chemical, onClose, onSaved }: { chemical?: ChemicalProfile; onClose: () => void; onSaved: () => void }) {
   const [draft, setDraft] = useState<Partial<ChemicalProfile>>(() => chemical ?? {
-    name: "", cas: "", phase: "gas", erpgUnit: "ppm", propertyVersion: "1.0", erpgVersion: "1.0",
+    name: "", cas: "", phase: "gas", erpgUnit: "ppm",
   });
   const [error, setError] = useState("");
-  const numeric: Array<[keyof ChemicalProfile, string, string]> = [
-    ["molarMassKgMol", "分子量", "kg/mol"], ["gasDensityKgM3", "气体密度", "kg/m³"], ["liquidDensityKgM3", "液体密度", "kg/m³"],
+  const liquidNumeric: Array<[keyof ChemicalProfile, string, string]> = [
+    ["liquidDensityKgM3", "液体密度", "kg/m³"],
     ["boilingPointK", "沸点", "K"], ["vaporPressurePa", "蒸气压", "Pa"], ["vaporHeatCapacityJkgK", "气相热容", "J/(kg·K)"],
     ["liquidHeatCapacityJkgK", "液相热容", "J/(kg·K)"], ["latentHeatJkg", "汽化热", "J/kg"], ["gamma", "绝热指数", "-"],
-    ["erpg1Ppm", "ERPG-1", "ppm"], ["erpg2Ppm", "ERPG-2", "ppm"], ["erpg3Ppm", "ERPG-3", "ppm"],
   ];
+  const builtin = builtinChemicalCas.has(draft.cas?.trim() ?? "");
+  const providedLiquid = !builtin && draft.phase === "liquefiedGas";
+  const setNumeric = (field: keyof ChemicalProfile, value: string, divisor = 1) => {
+    setDraft({ ...draft, [field]: value === "" ? undefined : number(value) / divisor });
+  };
   const save = async () => {
     try {
-      if (chemical) await simulationApi.updateChemical(draft as ChemicalProfile);
-      else await simulationApi.createChemical(draft as Omit<ChemicalProfile, "id">);
+      const payload = { ...draft, erpgUnit: "ppm" } as ChemicalProfile;
+      if (chemical) await simulationApi.updateChemical(payload);
+      else await simulationApi.createChemical(payload);
       onSaved();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "保存失败"); }
   };
@@ -154,12 +159,11 @@ function ChemicalEditor({ chemical, onClose, onSaved }: { chemical?: ChemicalPro
       <label>名称<input value={draft.name ?? ""} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
       <label>CAS<input value={draft.cas ?? ""} onChange={(e) => setDraft({ ...draft, cas: e.target.value })} /></label>
       <label>相态<select value={draft.phase} onChange={(e) => setDraft({ ...draft, phase: e.target.value as ChemicalProfile["phase"] })}><option value="gas">气体</option><option value="liquefiedGas">液化气</option></select></label>
-      {numeric.map(([field, label, unit]) => <label key={field}>{label}<span><input type="number" step="any" value={(draft[field] as number | undefined) ?? ""} onChange={(e) => setDraft({ ...draft, [field]: number(e.target.value) })} /><em>{unit}</em></span></label>)}
-      <label>物性来源<input value={draft.propertySource ?? ""} onChange={(e) => setDraft({ ...draft, propertySource: e.target.value })} /></label>
-      <label>物性版本<input value={draft.propertyVersion ?? ""} onChange={(e) => setDraft({ ...draft, propertyVersion: e.target.value })} /></label>
-      <label>ERPG 来源<input value={draft.erpgSource ?? ""} onChange={(e) => setDraft({ ...draft, erpgSource: e.target.value })} /></label>
-      <label>ERPG 版本<input value={draft.erpgVersion ?? ""} onChange={(e) => setDraft({ ...draft, erpgVersion: e.target.value })} /></label>
+      <label>分子量<span><input type="number" step="any" value={draft.molarMassKgMol === undefined ? "" : draft.molarMassKgMol * 1000} onChange={(e) => setNumeric("molarMassKgMol", e.target.value, 1000)} /><em>g/mol</em></span></label>
+      {(["erpg1Ppm", "erpg2Ppm", "erpg3Ppm"] as const).map((field, index) => <label key={field}>ERPG-{index + 1}<span><input type="number" step="any" value={draft[field] ?? ""} onChange={(e) => setNumeric(field, e.target.value)} /><em>ppm</em></span></label>)}
+      {providedLiquid && liquidNumeric.map(([field, label, unit]) => <label key={field}>{label}<span><input type="number" step="any" value={(draft[field] as number | undefined) ?? ""} onChange={(e) => setNumeric(field, e.target.value)} /><em>{unit}</em></span></label>)}
     </div>
+    <p className="chemical-property-note">{builtin ? "该物质使用系统内置固定物性。" : providedLiquid ? "非内置液化气必须填写完整真实液体物性。" : "该物质按理想气体近似，绝热指数统一取 1.4。"}</p>
     {error && <p className="simulation-error">{error}</p>}
     <footer><button onClick={onClose}>取消</button><button className="is-primary" onClick={save}><Save size={16} />保存</button></footer>
   </div></div>;
@@ -292,7 +296,7 @@ export function SimulationPage() {
         {scenario.releaseType !== "instantaneous" && <><Input label="隔离时间" value={scenario.isolationTimeS} unit="s" onChange={(v) => setScenarioNumber("isolationTimeS", v)} /><Input label="孔径" value={scenario.holeDiameterM ?? 0} unit="m" onChange={(v) => setScenarioNumber("holeDiameterM", v)} /><Input label="设备绝压" value={scenario.vesselPressurePa ?? 0} unit="Pa" onChange={(v) => setScenarioNumber("vesselPressurePa", v)} /></>}
         <Input label="物料温度" value={scenario.releaseTemperatureK} unit="K" onChange={(v) => setScenarioNumber("releaseTemperatureK", v)} />
         <Input label="释放高度" value={scenario.releaseHeightM} unit="m" onChange={(v) => setScenarioNumber("releaseHeightM", v)} />
-        {scenario.releaseType === "liquefiedGas" && <><Input label="液池面积" value={scenario.poolAreaM2 ?? 0} unit="m²" onChange={(v) => setScenarioNumber("poolAreaM2", v)} /><Input label="地面热通量" value={scenario.poolHeatFluxWM2 ?? 0} unit="W/m²" onChange={(v) => setScenarioNumber("poolHeatFluxWM2", v)} /><Input label="质量传递系数" value={scenario.massTransferCoefficientMS ?? 0} unit="m/s" onChange={(v) => setScenarioNumber("massTransferCoefficientMS", v)} /><Input label="蒸气压" value={scenario.vaporPressurePa ?? 0} unit="Pa" onChange={(v) => setScenarioNumber("vaporPressurePa", v)} /></>}
+        {scenario.releaseType === "liquefiedGas" && <><Input label="液池面积" value={scenario.poolAreaM2 ?? 0} unit="m²" onChange={(v) => setScenarioNumber("poolAreaM2", v)} /><Input label="地面热通量" value={scenario.poolHeatFluxWM2 ?? 0} unit="W/m²" onChange={(v) => setScenarioNumber("poolHeatFluxWM2", v)} /><Input label="质量传递系数" value={scenario.massTransferCoefficientMS ?? 0} unit="m/s" onChange={(v) => setScenarioNumber("massTransferCoefficientMS", v)} /></>}
         <h2><Wind size={17} />气象输入 {weather?.corrected && <em>已人工修正</em>}</h2>
         {weather && <><Input label="风速" value={weather.windSpeedMS} unit="m/s" onChange={(v) => correctWeather("windSpeedMS", v)} /><Input label="风向（来向）" value={weather.windDirectionDeg} unit="°" onChange={(v) => correctWeather("windDirectionDeg", v)} /><Input label="环境温度" value={weather.temperatureK} unit="K" onChange={(v) => correctWeather("temperatureK", v)} /><Input label="环境压力" value={weather.pressurePa} unit="Pa" onChange={(v) => correctWeather("pressurePa", v)} /><Input label="相对湿度" value={weather.relativeHumidityPct} unit="%" onChange={(v) => correctWeather("relativeHumidityPct", v)} /><Input label="地表粗糙度" value={weather.surfaceRoughnessM} unit="m" onChange={(v) => correctWeather("surfaceRoughnessM", v)} /><div className="simulation-select"><span className="simulation-label-with-help">Pasquill 稳定度<button type="button" className="stability-guide-button" aria-label="查看 Pasquill 大气稳定度选值备注" title="查看选值备注" onClick={() => setShowStabilityGuide(true)}><CircleHelp size={16} /></button></span><select aria-label="Pasquill 稳定度" value={weather.stabilityClass} onChange={(e) => correctWeather("stabilityClass", e.target.value)}><option value="">请人工确认</option>{["A", "B", "C", "D", "E", "F"].map((v) => <option key={v}>{v}</option>)}</select></div></>}
         <p className="source-coordinate">泄漏点：X东 {scenario.sourceCoordinate.eastM.toFixed(1)} m / Y北 {scenario.sourceCoordinate.northM.toFixed(1)} m<br /><small>点击中部地图可修改</small></p>
@@ -313,7 +317,7 @@ export function SimulationPage() {
       <aside className="simulation-right">
         <h2>结果摘要</h2>
         {!run ? <div className="simulation-empty">完成参数与标定检查后运行模拟</div> : <>
-          <div className="route-card"><b>{run.modelRoute.model === "slab" ? "EPA SLAB 重气" : "Pasquill-Gifford 高斯"}</b><span>Ri = {run.modelRoute.richardsonNumber.toFixed(3)} / 临界 1.0</span><small>{run.modelRoute.modelVersion}</small></div>
+          <div className="route-card"><b>{run.modelRoute.model === "slab" ? "EPA SLAB 重气" : "Pasquill-Gifford 高斯"}</b>{run.propertyApproximate && <em>近似物性·理想气体</em>}<span>Ri = {run.modelRoute.richardsonNumber.toFixed(3)} / 临界 1.0</span><small>{run.modelRoute.modelVersion}</small></div>
           <div className="result-metrics"><span><b>{run.summary.releasedMassKg.toFixed(2)}</b> kg<br />有效释放</span><span><b>{run.summary.effectiveDurationS.toFixed(0)}</b> s<br />泄漏时长</span></div>
           {run.zones.map((zone) => <button className="zone-result" style={{ borderColor: zone.color }} key={zone.level} onClick={() => setSelectedZone(zone)}><b style={{ color: zone.color }}>{zone.level} · {zone.thresholdPpm} ppm</b><span>最远 {zone.maxDownwindDistanceM.toFixed(0)} m</span><span>最宽 {zone.maxWidthM.toFixed(0)} m</span><span>面积 {(zone.areaM2 / 10000).toFixed(2)} ha</span></button>)}
           <h2>确定性风险提醒</h2>

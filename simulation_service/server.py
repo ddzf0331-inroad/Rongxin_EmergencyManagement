@@ -383,7 +383,7 @@ class SimulationHandler(SimpleHTTPRequestHandler):
                 })
 
     def _save_chemical(self, body: dict[str, Any], create: bool) -> None:
-        validate_chemical(body)
+        body = validate_chemical(body)
         now = utc_now()
         body["updatedAt"] = now
         database = self._database()

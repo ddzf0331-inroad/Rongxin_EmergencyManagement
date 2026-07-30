@@ -46,11 +46,16 @@ def _number(value: float, integer: bool = False) -> str:
 def build_input(chemical: dict[str, Any], source: dict[str, float], weather: dict[str, Any]) -> str:
     source_type = 4 if source["releaseKind"] == "instantaneous" else 1 if source["releaseKind"] == "pool" else 2
     liquid_fraction = source.get("liquidMassFraction", 0.0)
+    approximate_gas = chemical.get("propertyMode") == "idealGasApproximation" and liquid_fraction == 0
+    boiling_point = 1.0 if approximate_gas else chemical["boilingPointK"]
+    latent_heat = 1.0 if approximate_gas else chemical["latentHeatJkg"]
+    liquid_heat_capacity = 1.0 if approximate_gas else chemical["liquidHeatCapacityJkgK"]
+    liquid_density = 1.0 if approximate_gas else chemical["liquidDensityKgM3"]
     values = (
         source_type, 1,
         chemical["molarMassKgMol"], chemical["vaporHeatCapacityJkgK"],
-        chemical["boilingPointK"], liquid_fraction, chemical["latentHeatJkg"],
-        chemical["liquidHeatCapacityJkgK"], chemical["liquidDensityKgM3"], -1.0, 0.0,
+        boiling_point, liquid_fraction, latent_heat,
+        liquid_heat_capacity, liquid_density, -1.0, 0.0,
         source["temperatureK"], source["massRateKgS"], source["areaM2"],
         source["durationS"], source.get("instantaneousMassKg", 0.0), source.get("heightM", 0.0),
         10.0, 5000.0, 0.0, 0.0, 0.0, 0.0,

@@ -1,7 +1,15 @@
 import math
 import unittest
 
-from simulation_service.models import InputError, model_route, ppm_to_kg_m3, simulate, source_term
+from simulation_service.models import (
+    InputError,
+    model_route,
+    ppm_to_kg_m3,
+    resolve_chemical_properties,
+    simulate,
+    source_term,
+    validate_chemical,
+)
 
 
 CHEMICAL = {
@@ -17,9 +25,47 @@ WEATHER = {
     "pressurePa": 101325.0, "relativeHumidityPct": 50.0, "stabilityClass": "D",
     "surfaceRoughnessM": 0.3, "source": "test", "corrected": False,
 }
+MINIMAL_AMMONIA = {
+    "id": "ammonia-minimal", "name": "氨", "cas": "7664-41-7", "phase": "gas",
+    "molarMassKgMol": 0.017031,
+    "erpg1Ppm": 25.0, "erpg2Ppm": 150.0, "erpg3Ppm": 1500.0,
+}
+UNKNOWN_GAS = {
+    "id": "unknown-gas", "name": "未知气体", "cas": "9999-99-9", "phase": "gas",
+    "molarMassKgMol": 0.018,
+    "erpg1Ppm": 1.0, "erpg2Ppm": 3.0, "erpg3Ppm": 10.0,
+}
 
 
 class ModelTests(unittest.TestCase):
+    def test_builtin_properties_fill_missing_fields_and_sources_are_optional(self):
+        scenario = {"releaseType": "pressurizedGas", "releaseTemperatureK": 298.15}
+        resolved = resolve_chemical_properties(MINIMAL_AMMONIA, scenario, WEATHER)
+        self.assertEqual(resolved["propertyMode"], "builtin")
+        self.assertEqual(resolved["liquidDensityKgM3"], 682.8)
+        self.assertEqual(resolved["vaporPressurePa"], 994427.0)
+        self.assertEqual(resolved["erpgSource"], "")
+        self.assertEqual(resolved["propertyVersion"], "")
+
+    def test_unknown_gas_uses_ideal_gas_properties(self):
+        scenario = {"releaseType": "pressurizedGas", "releaseTemperatureK": 300.0}
+        resolved = resolve_chemical_properties(UNKNOWN_GAS, scenario, WEATHER)
+        expected_density = WEATHER["pressurePa"] * 0.018 / (8.314462618 * 300.0)
+        expected_cp = 1.4 / 0.4 * 8.314462618 / 0.018
+        self.assertEqual(resolved["propertyMode"], "idealGasApproximation")
+        self.assertTrue(resolved["propertyApproximate"])
+        self.assertEqual(resolved["gamma"], 1.4)
+        self.assertAlmostEqual(resolved["gasDensityKgM3"], expected_density)
+        self.assertAlmostEqual(resolved["vaporHeatCapacityJkgK"], expected_cp)
+        self.assertNotIn("liquidDensityKgM3", resolved)
+
+    def test_unknown_liquefied_gas_requires_real_properties(self):
+        chemical = {**UNKNOWN_GAS, "phase": "liquefiedGas"}
+        with self.assertRaises(InputError) as caught:
+            validate_chemical(chemical)
+        self.assertIn("liquidDensityKgM3", caught.exception.fields)
+        self.assertIn("vaporPressurePa", caught.exception.fields)
+
     def test_choked_gas_and_effective_duration(self):
         scenario = {
             "releaseType": "pressurizedGas", "inventoryKg": 100.0, "isolationTimeS": 900.0,
@@ -109,7 +155,7 @@ class ModelTests(unittest.TestCase):
             "weather": WEATHER,
         }
         with self.assertRaises(InputError) as caught:
-            simulate(body, {**CHEMICAL, "gasDensityKgM3": 2.0})
+            simulate(body, {**UNKNOWN_GAS, "molarMassKgMol": 0.0709})
         self.assertEqual(caught.exception.fields, ["releaseHeightM"])
 
     def test_meteorological_wind_direction_rotates_downwind(self):
@@ -141,6 +187,17 @@ class ModelTests(unittest.TestCase):
         self.assertGreater(result["sourceTerm"]["flashRateKgS"], 0)
         self.assertGreater(result["sourceTerm"]["poolEvaporationKgS"], 0)
         self.assertEqual([zone["level"] for zone in result["zones"]], ["ERPG-3", "ERPG-2", "ERPG-1"])
+
+    def test_liquid_source_uses_chemical_vapor_pressure_not_legacy_scenario_value(self):
+        scenario = {
+            "releaseType": "liquefiedGas", "inventoryKg": 1000.0, "isolationTimeS": 600.0,
+            "releaseTemperatureK": 260.0, "releaseHeightM": 0.0, "holeDiameterM": 0.01,
+            "vesselPressurePa": 900000.0, "poolAreaM2": 20.0, "poolHeatFluxWM2": 500.0,
+            "massTransferCoefficientMS": 0.002,
+        }
+        first = source_term(scenario, CHEMICAL, WEATHER)
+        second = source_term({**scenario, "vaporPressurePa": 9_999_999.0}, CHEMICAL, WEATHER)
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":

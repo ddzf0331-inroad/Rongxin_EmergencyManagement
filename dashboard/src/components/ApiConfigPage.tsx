@@ -70,7 +70,7 @@ const sourceMeta: Record<
     itemFields: {
       id: "记录 ID", name: "名称", alias: "别名", hazardClass: "危险类别",
       danger: "危险描述", emergencyMeasure: "应急措施", detail: "处置补充",
-      cas: "CAS 号", phase: "相态", molarMassKgMol: "分子量 kg/mol",
+      cas: "CAS 号", phase: "相态", molarMassKgMol: "分子量（接口值 g/mol，系统自动换算为 kg/mol）",
       gasDensityKgM3: "气体密度 kg/m³", liquidDensityKgM3: "液体密度 kg/m³",
       boilingPointK: "沸点 K", vaporPressurePa: "蒸气压 Pa",
       vaporHeatCapacityJkgK: "气相热容 J/(kg·K)", liquidHeatCapacityJkgK: "液相热容 J/(kg·K)",
@@ -127,7 +127,7 @@ function normalizeConfigForUi(config: DashboardApiConfig): DashboardApiConfig {
   sourceKeys.forEach((key) => {
     const itemPaths = next.sources[key].itemPaths;
     Object.keys(sourceMeta[key].itemFields).forEach((field) => {
-      if (!itemPaths[field]) itemPaths[field] = field;
+      if (!(field in itemPaths)) itemPaths[field] = field;
     });
   });
   return next;

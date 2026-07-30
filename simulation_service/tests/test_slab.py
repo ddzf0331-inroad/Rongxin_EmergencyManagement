@@ -27,9 +27,59 @@ class SlabInputTests(unittest.TestCase):
         self.assertEqual(lines[14], "600.0")
         self.assertTrue(all("e" not in line.lower() for line in lines))
 
+    def test_ideal_gas_approximation_uses_internal_inactive_liquid_placeholders(self):
+        chemical = {
+            "molarMassKgMol": 0.0709,
+            "vaporHeatCapacityJkgK": 410.5,
+            "propertyMode": "idealGasApproximation",
+        }
+        source = {
+            "releaseKind": "gas", "liquidMassFraction": 0.0, "temperatureK": 298.15,
+            "massRateKgS": 1.0, "areaM2": 0.01, "durationS": 60.0,
+            "instantaneousMassKg": 0.0, "heightM": 1.0,
+        }
+        weather = {
+            "surfaceRoughnessM": 0.3, "windMeasurementHeightM": 10.0, "windSpeedMS": 3.0,
+            "temperatureK": 298.15, "relativeHumidityPct": 50.0, "stabilityClass": "D",
+        }
+        lines = build_input(chemical, source, weather).splitlines()
+        self.assertEqual([lines[index] for index in (4, 6, 7, 8)], ["1.0"] * 4)
+
 
 @unittest.skipUnless(is_available(), "platform SLAB binary not installed")
 class SlabTests(unittest.TestCase):
+    def test_unknown_heavy_ideal_gas_continuous_and_instantaneous(self):
+        chemical = {
+            "id": "unknown-heavy", "name": "未知重气", "cas": "9999-99-9", "phase": "gas",
+            "molarMassKgMol": 0.0709,
+            "erpg1Ppm": 0.1, "erpg2Ppm": 0.3, "erpg3Ppm": 1.0,
+        }
+        weather = {
+            "windSpeedMS": 3.0, "windDirectionDeg": 45.0, "temperatureK": 298.15,
+            "pressurePa": 101325.0, "relativeHumidityPct": 60.0, "stabilityClass": "D",
+            "surfaceRoughnessM": 0.3, "windMeasurementHeightM": 10.0,
+            "source": "test", "corrected": False,
+        }
+        scenarios = [
+            {
+                "releaseType": "pressurizedGas", "inventoryKg": 100.0, "isolationTimeS": 600.0,
+                "releaseTemperatureK": 298.15, "releaseHeightM": 1.0, "holeDiameterM": 0.01,
+                "vesselPressurePa": 800000.0, "sourceCoordinate": {"eastM": 0.0, "northM": 0.0},
+            },
+            {
+                "releaseType": "instantaneous", "inventoryKg": 1100.0,
+                "releaseTemperatureK": 298.15, "releaseHeightM": 1.0,
+                "sourceCoordinate": {"eastM": 0.0, "northM": 0.0},
+            },
+        ]
+        for scenario in scenarios:
+            with self.subTest(release_type=scenario["releaseType"]):
+                normalized, result = simulate({"scenario": scenario, "weather": weather}, chemical)
+                self.assertEqual(result["modelRoute"]["model"], "slab")
+                self.assertEqual(result["propertyMode"], "idealGasApproximation")
+                self.assertEqual(normalized["chemical"]["gamma"], 1.4)
+                self.assertTrue(all(zone["maxDownwindDistanceM"] > 0 for zone in result["zones"]))
+
     def test_platform_binary_and_parser(self):
         chemical = {
             "molarMassKgMol": 0.0709, "vaporHeatCapacityJkgK": 480.0,

@@ -97,6 +97,36 @@ class ApiConfigUnitTests(unittest.TestCase):
         self.assertEqual(normalized["data"]["list"][0]["expiryStatus"], "expiring")
         self.assertEqual(normalized["data"]["list"][0]["detailUrl"], "https://example.com/resources?id=m-1")
 
+    def test_chemical_normalization_converts_g_mol_and_allows_optional_properties(self):
+        source = default_api_config()["sources"]["chemicals"]
+        optional_fields = {
+            "gasDensityKgM3", "liquidDensityKgM3", "boilingPointK", "vaporPressurePa",
+            "vaporHeatCapacityJkgK", "liquidHeatCapacityJkgK", "latentHeatJkg", "gamma",
+            "erpgSource", "erpgVersion", "propertySource", "propertyVersion",
+        }
+        for field in optional_fields:
+            source["itemPaths"][field] = ""
+        raw_item = {
+            field: f"{field}-value" for field in SOURCE_FIELDS["chemicals"]
+            if field not in optional_fields
+        }
+        raw_item.update({
+            "molarMassKgMol": 17.031,
+            "erpg1Ppm": 25,
+            "erpg2Ppm": 150,
+            "erpg3Ppm": 1500,
+        })
+        payload = {
+            "code": 0,
+            "data": {"list": [raw_item], "total": 1, "page": 1, "pageSize": 20},
+        }
+
+        row = normalize_payload("chemicals", "", source, payload)["data"]["list"][0]
+
+        self.assertAlmostEqual(row["molarMassKgMol"], 0.017031)
+        self.assertEqual(row["erpgUnit"], "ppm")
+        self.assertTrue(all(row[field] is None for field in optional_fields))
+
     def test_all_seven_sources_normalize_to_canonical_fields(self):
         config = default_api_config()
         for source_key, fields in SOURCE_FIELDS.items():
