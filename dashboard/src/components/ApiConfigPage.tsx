@@ -5,11 +5,13 @@ import {
   ChevronDown,
   ChevronUp,
   Database,
+  Download,
   FlaskConical,
   Save,
   Server,
+  Upload,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { dashboardApi } from "../services/dashboardApi";
 import type {
   ApiConfigTestResult,
@@ -145,6 +147,39 @@ function textToParams(text: string) {
   }, {});
 }
 
+function importedConfig(value: unknown): DashboardApiConfig {
+  if (!value || typeof value !== "object") throw new Error("配置文件必须是 JSON 对象");
+  const candidate = value as Partial<DashboardApiConfig>;
+  if (typeof candidate.baseUrl !== "string" || !candidate.sources || typeof candidate.sources !== "object") {
+    throw new Error("配置文件缺少 Base URL 或数据源配置");
+  }
+  for (const key of sourceKeys) {
+    const source = candidate.sources[key];
+    if (
+      !source
+      || typeof source.enabled !== "boolean"
+      || typeof source.apiPath !== "string"
+      || typeof source.pagePath !== "string"
+      || typeof source.detailIdParam !== "string"
+      || !source.defaultParams
+      || typeof source.defaultParams !== "object"
+      || !source.queryParams
+      || typeof source.queryParams !== "object"
+      || !source.responsePaths
+      || typeof source.responsePaths !== "object"
+      || !source.itemPaths
+      || typeof source.itemPaths !== "object"
+      || (key === "materials" && !source.statusValues)
+    ) {
+      throw new Error(`配置文件中的 ${sourceMeta[key].label} 数据源不完整`);
+    }
+  }
+  return normalizeConfigForUi({
+    ...candidate,
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : "",
+  } as DashboardApiConfig);
+}
+
 export function ApiConfigPage() {
   const [config, setConfig] = useState<DashboardApiConfig | null>(null);
   const [expanded, setExpanded] = useState<DashboardApiSourceKey | null>("materials");
@@ -199,6 +234,22 @@ export function ApiConfigPage() {
     }
   };
 
+  const importConfig = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const next = importedConfig(JSON.parse(await file.text()) as unknown);
+      setConfig(next);
+      setTests({});
+      setSaveState("idle");
+      setMessage(`已导入 ${file.name}，尚未保存，请检查后点击“保存配置”`);
+    } catch (error) {
+      setSaveState("error");
+      setMessage(error instanceof Error ? `导入失败：${error.message}` : "导入失败：配置文件格式不正确");
+    }
+  };
+
   if (!config) {
     return (
       <main className="loading-screen">
@@ -219,11 +270,26 @@ export function ApiConfigPage() {
           <span>第三方 API 配置中心</span>
           <b>{saveState === "saved" ? "已共享保存" : "服务端配置"}</b>
         </div>
-        <a className="config-save" href="/config">图层配置</a>
-        <button className="config-save" type="button" onClick={save} disabled={saveState === "saving"}>
-          <Save size={18} />
-          {saveState === "saving" ? "保存中" : "保存配置"}
-        </button>
+        <div className="api-config-actions">
+          <a className="config-save" href="/config">图层配置</a>
+          <a
+            className="config-save"
+            download={`emergency-dashboard-api-config-${new Date().toISOString().slice(0, 10)}.json`}
+            href={`data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(config, null, 2))}`}
+          >
+            <Download size={18} />
+            导出配置
+          </a>
+          <label className="config-save api-config-import">
+            <Upload size={18} />
+            导入配置
+            <input accept=".json,application/json" type="file" onChange={importConfig} />
+          </label>
+          <button className="config-save" type="button" onClick={save} disabled={saveState === "saving"}>
+            <Save size={18} />
+            {saveState === "saving" ? "保存中" : "保存配置"}
+          </button>
+        </div>
       </header>
 
       <div className="api-config-scroll">

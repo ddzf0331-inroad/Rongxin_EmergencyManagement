@@ -3489,7 +3489,21 @@ button {
 }
 
 .api-config-header {
-  grid-template-columns: 190px minmax(360px, 1fr) 152px 152px;
+  grid-template-columns: 190px minmax(300px, 1fr) auto;
+}
+
+.api-config-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.api-config-actions .config-save {
+  width: 112px;
+  cursor: pointer;
+}
+
+.api-config-import input {
+  display: none;
 }
 
 .api-config-scroll {
