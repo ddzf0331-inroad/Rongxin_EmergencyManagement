@@ -424,6 +424,24 @@ function DashboardShell() {
     }
   };
 
+  const startAlertIncident = async (
+    alert: DashboardSnapshot["alerts"][number],
+    occurredAt: string,
+  ) => {
+    const created = await dashboardApi.createIncident({
+      title: `${alert.site}${alert.type}`,
+      type: "GDS报警",
+      location: alert.site,
+      description: `${alert.site}异常报警，报警值${alert.alarmValue}`,
+      reporter: "GDS系统",
+      reporterPhone: "",
+      occurredAt,
+    });
+    const incident = await dashboardApi.startIncident(created.id);
+    setPendingIncidents([]);
+    setActiveIncident(incident);
+  };
+
   const classifyNonEmergency = async (incidentId: string) => {
     setReviewing(true);
     setReviewError("");
@@ -468,6 +486,7 @@ function DashboardShell() {
       }}
       onNonEmergency={classifyNonEmergency}
       onRespond={startIncident}
+      onAlertRespond={startAlertIncident}
     />
   );
 }
@@ -554,6 +573,7 @@ function DashboardPage({
   onSelectPending,
   onNonEmergency,
   onRespond,
+  onAlertRespond,
 }: {
   pendingIncidents: EmergencyIncident[];
   selectedPendingIncident: EmergencyIncident | null;
@@ -562,6 +582,10 @@ function DashboardPage({
   onSelectPending: (id: string) => void;
   onNonEmergency: (id: string) => void;
   onRespond: (id: string) => void;
+  onAlertRespond: (
+    alert: DashboardSnapshot["alerts"][number],
+    occurredAt: string,
+  ) => Promise<void>;
 }) {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [points, setPoints] = useState<MapPoint[]>([]);
@@ -574,6 +598,8 @@ function DashboardPage({
   const [dutyKeyword, setDutyKeyword] = useState("");
   const [dutyStaff, setDutyStaff] = useState<DutyStaff[]>([]);
   const [drillView, setDrillView] = useState<"month" | "department">("month");
+  const [respondingAlertId, setRespondingAlertId] = useState("");
+  const [alertResponseError, setAlertResponseError] = useState("");
   const [loading, setLoading] = useState(true);
   const materialSource = useExternalSource<MaterialRow>("materials", 20);
 
@@ -701,13 +727,25 @@ function DashboardPage({
   const openAlertPopup = (row: DashboardSnapshot["alerts"][number]) => {
     setInfoPopup({
       title: row.site,
-      status: row.status,
+      status: `报警值 ${row.alarmValue}`,
+      statusTone: row.level === "critical" || row.level === "high" ? "danger" : "warning",
       rows: [
-        { label: "报警类型", value: row.type, tone: row.status === "处理中" ? "danger" : "ok" },
+        { label: "报警类型", value: row.type, tone: row.level === "critical" || row.level === "high" ? "danger" : "warning" },
         { label: "报警时间", value: row.time },
-        { label: "处置流程", value: row.status === "处理中" ? "待接警研判" : "已确认闭环" },
+        { label: "报警值", value: row.alarmValue, tone: "danger" },
       ],
     });
+  };
+
+  const respondToAlert = async (row: DashboardSnapshot["alerts"][number]) => {
+    setRespondingAlertId(row.id);
+    setAlertResponseError("");
+    try {
+      await onAlertRespond(row, `${snapshot.weather.date}T${row.time}+08:00`);
+    } catch (error) {
+      setAlertResponseError(error instanceof Error ? error.message : "启动应急响应失败");
+      setRespondingAlertId("");
+    }
   };
 
   const openPlanPopup = () => {
@@ -897,13 +935,15 @@ function DashboardPage({
 
         <aside className="side-rail side-rail--right">
           <Panel title="有毒有害实时报警信息" icon={<MonitorDot size={20} />}>
+            {alertResponseError ? <div className="alert-response-error" role="alert">{alertResponseError}</div> : null}
             <table className="data-table alert-table">
               <thead>
                 <tr>
                   <th>点位名称</th>
                   <th>报警类型</th>
                   <th>时间</th>
-                  <th>状态</th>
+                  <th>报警值</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -919,8 +959,20 @@ function DashboardPage({
                     </td>
                     <td>{row.type}</td>
                     <td>{row.time}</td>
-                    <td className={row.status === "处理中" ? "state state--danger" : "state state--ok"}>
-                      {row.status}
+                    <td className="alarm-value">{row.alarmValue}</td>
+                    <td>
+                      <button
+                        className="alert-response-button"
+                        type="button"
+                        disabled={Boolean(respondingAlertId)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void respondToAlert(row);
+                        }}
+                        title={`响应${row.site}报警`}
+                      >
+                        {respondingAlertId === row.id ? "启动中" : "响应"}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1231,7 +1283,7 @@ function EmergencyResponsePage({
               </p>
               <p>
                 <span>时间：</span>
-                {incidentTime(snapshot.incident.startedAt)}
+                {incidentTime(snapshot.incident.type === "GDS报警" ? snapshot.incident.reportedAt : snapshot.incident.startedAt)}
               </p>
               <p className="incident-summary__copy">
                 <span>事件描述：</span>

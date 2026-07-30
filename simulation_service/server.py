@@ -220,6 +220,9 @@ class SimulationHandler(SimpleHTTPRequestHandler):
                     if action in {"non-emergency", "respond", "terminate"}:
                         self._transition_incident(incident_id, action, body)
                         return
+                    if action == "restore":
+                        self._restore_incident(incident_id)
+                        return
             if path == "/api/accident-simulation/chemicals":
                 body["id"] = body.get("id") or f"chemical-{uuid.uuid4().hex}"
                 self._save_chemical(body, create=True)
@@ -255,7 +258,14 @@ class SimulationHandler(SimpleHTTPRequestHandler):
             self._json(422, {"error": "validation_error", "message": str(error), "fields": error.fields})
 
     def do_DELETE(self) -> None:
-        chemical_id = self._chemical_id(urlparse(self.path).path)
+        path = urlparse(self.path).path
+        incident_prefix = "/api/emergency/incidents/"
+        if path.startswith(incident_prefix):
+            incident_id = path[len(incident_prefix):]
+            if incident_id and "/" not in incident_id:
+                self._delete_incident(incident_id)
+                return
+        chemical_id = self._chemical_id(path)
         if not chemical_id:
             self._json(404, {"error": "not_found"})
             return
@@ -435,8 +445,18 @@ class SimulationHandler(SimpleHTTPRequestHandler):
         description = self._incident_text(body, "description", "事件描述", 1000)
         reporter = self._incident_text(body, "reporter", "上报人", 60)
         reporter_phone = self._incident_text(body, "reporterPhone", "联系电话", 30, required=False)
+        occurred_at = self._incident_text(body, "occurredAt", "报警时间", 40, required=False)
         incident_id = f"incident-{uuid.uuid4().hex}"
         now = utc_now()
+        reported_at = now
+        if occurred_at:
+            try:
+                parsed_occurred_at = datetime.fromisoformat(occurred_at.replace("Z", "+00:00"))
+            except ValueError as error:
+                raise InputError("报警时间格式不正确", ["occurredAt"]) from error
+            if parsed_occurred_at.tzinfo is None:
+                raise InputError("报警时间必须包含时区", ["occurredAt"])
+            reported_at = parsed_occurred_at.isoformat(timespec="seconds")
         database = self._database()
         database.execute("BEGIN IMMEDIATE")
         incident_no = next_incident_no(database, now)
@@ -447,7 +467,7 @@ class SimulationHandler(SimpleHTTPRequestHandler):
               reported_at, status, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             """,
-            (incident_id, incident_no, title, incident_type, location, description, reporter, reporter_phone, now, now),
+            (incident_id, incident_no, title, incident_type, location, description, reporter, reporter_phone, reported_at, now),
         )
         database.commit()
         row = database.execute("SELECT * FROM emergency_incidents WHERE id = ?", (incident_id,)).fetchone()
@@ -460,6 +480,11 @@ class SimulationHandler(SimpleHTTPRequestHandler):
         status = (query.get("status") or [""])[0].strip()
         incident_type = (query.get("type") or [""])[0].strip()
         keyword = (query.get("keyword") or [""])[0].strip()
+        deleted = (query.get("deleted") or [""])[0].strip()
+        if deleted not in {"", "only"}:
+            self._json(422, {"error": "validation_error", "message": "删除状态不正确", "fields": ["deleted"]})
+            return
+        clauses.append("deleted_at IS NOT NULL" if deleted == "only" else "deleted_at IS NULL")
         if status:
             if status not in INCIDENT_STATUSES:
                 self._json(422, {"error": "validation_error", "message": "事件状态不正确", "fields": ["status"]})
@@ -487,7 +512,7 @@ class SimulationHandler(SimpleHTTPRequestHandler):
         order = "DESC" if newest else "ASC"
         database = self._database()
         row = database.execute(
-            f"SELECT * FROM emergency_incidents WHERE status = ? ORDER BY reported_at {order} LIMIT 1",
+            f"SELECT * FROM emergency_incidents WHERE status = ? AND deleted_at IS NULL ORDER BY reported_at {order} LIMIT 1",
             (status,),
         ).fetchone()
         database.close()
@@ -508,7 +533,7 @@ class SimulationHandler(SimpleHTTPRequestHandler):
         database = self._database()
         database.execute("BEGIN IMMEDIATE")
         row = database.execute(
-            "SELECT * FROM emergency_incidents WHERE id = ?",
+            "SELECT * FROM emergency_incidents WHERE id = ? AND deleted_at IS NULL",
             (incident_id,),
         ).fetchone()
         if not row:
@@ -535,7 +560,7 @@ class SimulationHandler(SimpleHTTPRequestHandler):
                 self._json(409, {"error": "invalid_incident_status"})
                 return
             active = database.execute(
-                "SELECT id FROM emergency_incidents WHERE status = 'responding' LIMIT 1"
+                "SELECT id FROM emergency_incidents WHERE status = 'responding' AND deleted_at IS NULL LIMIT 1"
             ).fetchone()
             if active:
                 database.rollback()
@@ -573,6 +598,36 @@ class SimulationHandler(SimpleHTTPRequestHandler):
         ).fetchone()
         database.close()
         self._json(200, row_to_incident(updated))
+
+    def _delete_incident(self, incident_id: str) -> None:
+        database = self._database()
+        now = utc_now()
+        cursor = database.execute(
+            "UPDATE emergency_incidents SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+            (now, now, incident_id),
+        )
+        database.commit()
+        row = database.execute("SELECT * FROM emergency_incidents WHERE id = ?", (incident_id,)).fetchone()
+        database.close()
+        if not cursor.rowcount:
+            self._json(404, {"error": "incident_not_found"})
+            return
+        self._json(200, row_to_incident(row))
+
+    def _restore_incident(self, incident_id: str) -> None:
+        database = self._database()
+        now = utc_now()
+        cursor = database.execute(
+            "UPDATE emergency_incidents SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL",
+            (now, incident_id),
+        )
+        database.commit()
+        row = database.execute("SELECT * FROM emergency_incidents WHERE id = ?", (incident_id,)).fetchone()
+        database.close()
+        if not cursor.rowcount:
+            self._json(404, {"error": "incident_not_found"})
+            return
+        self._json(200, row_to_incident(row))
 
     def _run(self, body: dict[str, Any]) -> None:
         run_id = f"run-{uuid.uuid4().hex}"

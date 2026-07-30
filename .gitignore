@@ -2,6 +2,7 @@
 
 dashboard/node_modules/
 dashboard/.npm-cache/
+.pnpm-store/
 
 build/
 release/

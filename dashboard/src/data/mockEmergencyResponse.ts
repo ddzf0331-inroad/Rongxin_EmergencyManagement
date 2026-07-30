@@ -17,6 +17,7 @@ export const mockEmergencyIncident: EmergencyIncident = {
   terminatedAt: null,
   terminationReasons: [],
   terminationNote: "",
+  deletedAt: null,
   updatedAt: "2025-10-20 13:56",
   startedAt: "2025-10-20 13:52",
   substance: "氨",

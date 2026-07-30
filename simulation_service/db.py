@@ -33,10 +33,12 @@ def next_incident_no(connection: sqlite3.Connection, reported_at: str) -> str:
     return f"SJ-{day}-{sequence:04d}"
 
 
-def _ensure_incident_numbers(connection: sqlite3.Connection) -> None:
+def _ensure_incident_schema(connection: sqlite3.Connection) -> None:
     columns = {row["name"] for row in connection.execute("PRAGMA table_info(emergency_incidents)")}
     if "incident_no" not in columns:
         connection.execute("ALTER TABLE emergency_incidents ADD COLUMN incident_no TEXT")
+    if "deleted_at" not in columns:
+        connection.execute("ALTER TABLE emergency_incidents ADD COLUMN deleted_at TEXT")
 
     sequences: dict[str, int] = {}
     rows = connection.execute(
@@ -108,6 +110,7 @@ def connect(path: Path) -> sqlite3.Connection:
           terminated_at TEXT,
           termination_reasons_json TEXT,
           termination_note TEXT NOT NULL DEFAULT '',
+          deleted_at TEXT,
           updated_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_emergency_incidents_status_reported
@@ -127,7 +130,7 @@ def connect(path: Path) -> sqlite3.Connection:
         );
         """
     )
-    _ensure_incident_numbers(connection)
+    _ensure_incident_schema(connection)
     return connection
 
 
@@ -177,6 +180,7 @@ def row_to_incident(row: sqlite3.Row) -> dict[str, Any]:
         "terminatedAt": row["terminated_at"],
         "terminationReasons": loads(row["termination_reasons_json"]) or [],
         "terminationNote": row["termination_note"],
+        "deletedAt": row["deleted_at"],
         "startedAt": row["responded_at"] or reported_at,
         "substance": "",
         "affectedArea": location,

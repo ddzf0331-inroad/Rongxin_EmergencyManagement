@@ -88,6 +88,11 @@ class ApiTests(unittest.TestCase):
         with urllib.request.urlopen(request) as response:
             return response.status, json.load(response)
 
+    def delete_json(self, path):
+        request = urllib.request.Request(self.base + path, method="DELETE")
+        with urllib.request.urlopen(request) as response:
+            return response.status, json.load(response)
+
     def test_health_and_seed_chemical(self):
         status, health = self.get_json("/api/accident-simulation/health")
         self.assertEqual(status, 200)
@@ -182,6 +187,21 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(judged["status"], "non_emergency")
         self.assertIsNotNone(judged["judgedAt"])
 
+    def test_gds_alarm_time_is_persisted_for_response_display(self):
+        occurred_at = "2025-10-20T14:07:32+08:00"
+        status, incident = self.post_json("/api/emergency/incidents", {
+            "title": "气化装置区氨气浓度超限",
+            "type": "GDS报警",
+            "location": "气化装置区",
+            "description": "气化装置区异常报警，报警值36.8 ppm",
+            "reporter": "GDS系统",
+            "reporterPhone": "",
+            "occurredAt": occurred_at,
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(incident["reportedAt"], occurred_at)
+        self.assertEqual(incident["type"], "GDS报警")
+
     def test_legacy_incidents_receive_ordered_human_readable_numbers(self):
         path = Path(self.temp.name) / "legacy-incidents.sqlite3"
         database = sqlite3.connect(path)
@@ -215,6 +235,8 @@ class ApiTests(unittest.TestCase):
         database.close()
 
         migrated = connect(path)
+        columns = {row["name"] for row in migrated.execute("PRAGMA table_info(emergency_incidents)")}
+        self.assertIn("deleted_at", columns)
         rows = migrated.execute(
             "SELECT incident_no FROM emergency_incidents ORDER BY reported_at"
         ).fetchall()
@@ -225,6 +247,34 @@ class ApiTests(unittest.TestCase):
         ])
         self.assertEqual(next_incident_no(migrated, "2026-07-28T03:00:00+00:00"), "SJ-20260728-0003")
         migrated.close()
+
+    def test_incident_soft_delete_and_restore(self):
+        _, incident = self.post_json("/api/emergency/incidents", {
+            "title": "待删除测试事件",
+            "type": "其他",
+            "location": "测试区域",
+            "description": "用于验证软删除和恢复。",
+            "reporter": "测试员",
+            "reporterPhone": "",
+        })
+
+        status, deleted = self.delete_json(f"/api/emergency/incidents/{incident['id']}")
+        self.assertEqual(status, 200)
+        self.assertIsNotNone(deleted["deletedAt"])
+
+        _, active_records = self.get_json(f"/api/emergency/incidents?keyword={incident['incidentNo']}")
+        self.assertEqual(active_records, [])
+        _, pending = self.get_json("/api/emergency/incidents/pending")
+        self.assertNotEqual(pending["id"] if pending else None, incident["id"])
+        _, recycled_records = self.get_json(
+            f"/api/emergency/incidents?deleted=only&keyword={incident['incidentNo']}"
+        )
+        self.assertEqual([record["id"] for record in recycled_records], [incident["id"]])
+
+        _, restored = self.post_json(f"/api/emergency/incidents/{incident['id']}/restore", {})
+        self.assertIsNone(restored["deletedAt"])
+        _, active_records = self.get_json(f"/api/emergency/incidents?keyword={incident['incidentNo']}")
+        self.assertEqual([record["id"] for record in active_records], [incident["id"]])
 
     def test_api_config_proxy_and_last_successful_cache(self):
         config = default_api_config()

@@ -11,3 +11,7 @@ The emergency dashboard configuration workflow lives at `/config`: users manuall
 Pending incident reviews must use a compact floating panel contained inside the basemap, without a full-dashboard mask. Multiple pending incidents are browsed within the same panel. Long incident descriptions wrap across lines and remain fully readable through an internal scroll area.
 
 User-facing incident numbers use `SJ-YYYYMMDD-NNNN`, with a four-digit sequence restarting each Asia/Shanghai calendar day. Keep the internal UUID for API routing and lifecycle operations.
+
+Both the overview dashboard and the emergency response dashboard must distribute side-rail card heights by content density. Do not let the last card absorb most of the remaining height; keep chart and video media proportions stable while the rails fill the viewport.
+
+Incident management does not provide editing. Deletion is soft deletion with confirmation; deleted incidents are hidden from normal workflows and can be restored from the existing event-scope filter's recycle bin.

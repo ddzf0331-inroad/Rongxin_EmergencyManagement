@@ -142,11 +142,11 @@ export const mockSnapshot: DashboardSnapshot = {
     ],
   },
   alerts: [
-    { id: "a-01", site: "气化装置区", type: "氨气浓度超限", time: "14:07:32", status: "处理中", level: "critical" },
-    { id: "a-02", site: "罐区14-4#", type: "硫化氢报警", time: "14:06:58", status: "处理中", level: "critical" },
-    { id: "a-03", site: "污水处理站", type: "氯气泄漏报警", time: "14:05:41", status: "处理中", level: "high" },
-    { id: "a-04", site: "酸碱罐区", type: "有毒气体超限", time: "14:04:23", status: "已确认", level: "medium" },
-    { id: "a-05", site: "压缩机区", type: "一氧化碳报警", time: "14:03:15", status: "已确认", level: "medium" },
+    { id: "a-01", site: "气化装置区", type: "氨气浓度超限", time: "14:07:32", alarmValue: "36.8 ppm", status: "处理中", level: "critical" },
+    { id: "a-02", site: "罐区14-4#", type: "硫化氢报警", time: "14:06:58", alarmValue: "18.6 ppm", status: "处理中", level: "critical" },
+    { id: "a-03", site: "污水处理站", type: "氯气泄漏报警", time: "14:05:41", alarmValue: "4.2 ppm", status: "处理中", level: "high" },
+    { id: "a-04", site: "酸碱罐区", type: "有毒气体超限", time: "14:04:23", alarmValue: "12.4 ppm", status: "已确认", level: "medium" },
+    { id: "a-05", site: "压缩机区", type: "一氧化碳报警", time: "14:03:15", alarmValue: "28 ppm", status: "已确认", level: "medium" },
   ],
   dutyStaff: [
     { id: "d-01", name: "张伟", department: "安环部", phone: "13812345678", status: "在岗", x: -0.46, y: 0.44 },

@@ -1,8 +1,10 @@
-import { CalendarDays, Edit3, Eye, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { CalendarDays, Eye, Plus, RefreshCw, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { incidentStatusLabels, incidentTypeOptions } from "../data/incidents";
 import { dashboardApi } from "../services/dashboardApi";
 import type { EmergencyIncident, IncidentStatus } from "../types";
+
+type IncidentScope = "active" | "deleted";
 
 function displayTime(value: string | null) {
   if (!value) return "--";
@@ -15,17 +17,20 @@ export function IncidentManagementPage() {
   const [draftType, setDraftType] = useState("");
   const [draftStartTime, setDraftStartTime] = useState("");
   const [draftEndTime, setDraftEndTime] = useState("");
-  const [filters, setFilters] = useState<{ keyword: string; status: IncidentStatus | ""; type: string; startTime: string; endTime: string }>({
+  const [draftScope, setDraftScope] = useState<IncidentScope>("active");
+  const [filters, setFilters] = useState<{ keyword: string; status: IncidentStatus | ""; type: string; startTime: string; endTime: string; deleted: IncidentScope }>({
     keyword: "",
     status: "",
     type: "",
     startTime: "",
     endTime: "",
+    deleted: "active",
   });
   const [incidents, setIncidents] = useState<EmergencyIncident[]>([]);
   const [selected, setSelected] = useState<EmergencyIncident | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [processingId, setProcessingId] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -55,7 +60,7 @@ export function IncidentManagementPage() {
 
   const query = () => {
     setLoading(true);
-    setFilters({ keyword: draftKeyword.trim(), status: draftStatus, type: draftType, startTime: draftStartTime, endTime: draftEndTime });
+    setFilters({ keyword: draftKeyword.trim(), status: draftStatus, type: draftType, startTime: draftStartTime, endTime: draftEndTime, deleted: draftScope });
   };
 
   const reset = () => {
@@ -64,8 +69,36 @@ export function IncidentManagementPage() {
     setDraftType("");
     setDraftStartTime("");
     setDraftEndTime("");
+    setDraftScope("active");
     setLoading(true);
-    setFilters({ keyword: "", status: "", type: "", startTime: "", endTime: "" });
+    setFilters({ keyword: "", status: "", type: "", startTime: "", endTime: "", deleted: "active" });
+  };
+
+  const remove = async (incident: EmergencyIncident) => {
+    if (!window.confirm(`确认删除事件“${incident.incidentNo}”？`)) return;
+    setProcessingId(incident.id);
+    try {
+      await dashboardApi.deleteIncident(incident.id);
+      setSelected((current) => current?.id === incident.id ? null : current);
+      await load();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "事件删除失败");
+    } finally {
+      setProcessingId("");
+    }
+  };
+
+  const restore = async (incident: EmergencyIncident) => {
+    setProcessingId(incident.id);
+    try {
+      await dashboardApi.restoreIncident(incident.id);
+      setSelected((current) => current?.id === incident.id ? null : current);
+      await load();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "事件恢复失败");
+    } finally {
+      setProcessingId("");
+    }
   };
 
   return (
@@ -103,8 +136,9 @@ export function IncidentManagementPage() {
             <CalendarDays size={15} />
           </label>
           <label>
-            <select aria-label="事件范围" defaultValue="all">
-              <option value="all">全部</option>
+            <select aria-label="事件范围" value={draftScope} onChange={(event) => setDraftScope(event.target.value as IncidentScope)}>
+              <option value="active">全部</option>
+              <option value="deleted">回收站</option>
             </select>
           </label>
           <div className="event-filter-actions">
@@ -142,14 +176,23 @@ export function IncidentManagementPage() {
                     <td>{displayTime(incident.reportedAt)}</td>
                     <td className="event-actions">
                       <button type="button" onClick={() => setSelected(incident)}><Eye size={15} />查看</button>
-                      <button type="button"><Edit3 size={15} />编辑</button>
-                      <button className="is-danger" type="button"><Trash2 size={15} />删除</button>
+                      {filters.deleted === "deleted" ? (
+                        <button type="button" disabled={processingId === incident.id} onClick={() => restore(incident)}>
+                          <RotateCcw size={15} />{processingId === incident.id ? "恢复中" : "恢复"}
+                        </button>
+                      ) : (
+                        <button className="is-danger" type="button" disabled={processingId === incident.id} onClick={() => remove(incident)}>
+                          <Trash2 size={15} />{processingId === incident.id ? "删除中" : "删除"}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!loading && incidents.length === 0 ? <div className="event-empty">暂无符合条件的事件记录</div> : null}
+            {!loading && incidents.length === 0 ? (
+              <div className="event-empty">{filters.deleted === "deleted" ? "回收站暂无事件记录" : "暂无符合条件的事件记录"}</div>
+            ) : null}
             {loading ? <div className="event-empty">正在加载事件记录…</div> : null}
           </div>
           <footer className="event-table-footer">
@@ -180,6 +223,7 @@ export function IncidentManagementPage() {
               <div><dt>上报人</dt><dd>{selected.reporter}</dd></div>
               <div><dt>联系电话</dt><dd>{selected.reporterPhone || "--"}</dd></div>
               <div><dt>上报时间</dt><dd>{displayTime(selected.reportedAt)}</dd></div>
+              {selected.deletedAt ? <div><dt>删除时间</dt><dd>{displayTime(selected.deletedAt)}</dd></div> : null}
               <div className="is-wide"><dt>事件描述</dt><dd>{selected.description}</dd></div>
               <div><dt>研判时间</dt><dd>{displayTime(selected.judgedAt)}</dd></div>
               <div><dt>响应时间</dt><dd>{displayTime(selected.respondedAt)}</dd></div>

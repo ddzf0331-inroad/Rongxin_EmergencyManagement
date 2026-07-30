@@ -236,6 +236,7 @@ export interface AlertRow {
   site: string;
   type: string;
   time: string;
+  alarmValue: string;
   status: "处理中" | "已确认";
   level: Severity;
 }
@@ -299,6 +300,7 @@ export interface IncidentCreateInput {
   description: string;
   reporter: string;
   reporterPhone: string;
+  occurredAt?: string;
 }
 
 export interface EmergencyIncident {
@@ -318,6 +320,7 @@ export interface EmergencyIncident {
   terminatedAt: string | null;
   terminationReasons: string[];
   terminationNote: string;
+  deletedAt: string | null;
   updatedAt: string;
   startedAt: string;
   substance: string;
