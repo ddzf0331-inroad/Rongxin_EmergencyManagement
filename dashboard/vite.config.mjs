@@ -10,7 +10,7 @@ export default defineConfig({
       clientFiles: ["./src/main.tsx"],
     },
     proxy: {
-      "/api": {
+      "^/api(?:/|$)": {
         target: "http://127.0.0.1:8766",
         changeOrigin: true,
       },
