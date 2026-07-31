@@ -14,4 +14,6 @@ User-facing incident numbers use `SJ-YYYYMMDD-NNNN`, with a four-digit sequence 
 
 Both the overview dashboard and the emergency response dashboard must distribute side-rail card heights by content density. Do not let the last card absorb most of the remaining height; keep chart and video media proportions stable while the rails fill the viewport.
 
-Incident management does not provide editing. Deletion is soft deletion with confirmation; deleted incidents are hidden from normal workflows and can be restored from the existing event-scope filter's recycle bin.
+Incident management does not provide editing or a recycle-bin filter. Deletion is soft deletion with confirmation, and deleted incidents are hidden from incident management and normal workflows.
+
+The incident-management date filter is a single start-to-end field that opens a two-month range calendar. Do not replace it with separate native date inputs.

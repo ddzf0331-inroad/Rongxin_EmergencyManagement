@@ -342,12 +342,11 @@ export const dashboardApi = {
     }
   },
 
-  listIncidents(filters: { keyword?: string; status?: IncidentStatus | ""; type?: string; deleted?: "active" | "deleted" } = {}): Promise<EmergencyIncident[]> {
+  listIncidents(filters: { keyword?: string; status?: IncidentStatus | ""; type?: string } = {}): Promise<EmergencyIncident[]> {
     const query = new URLSearchParams();
     if (filters.keyword?.trim()) query.set("keyword", filters.keyword.trim());
     if (filters.status) query.set("status", filters.status);
     if (filters.type) query.set("type", filters.type);
-    if (filters.deleted === "deleted") query.set("deleted", "only");
     const suffix = query.size ? `?${query.toString()}` : "";
     return incidentRequest<EmergencyIncident[]>(`/api/emergency/incidents${suffix}`);
   },
@@ -362,13 +361,6 @@ export const dashboardApi = {
   deleteIncident(id: string): Promise<EmergencyIncident> {
     return incidentRequest<EmergencyIncident>(`/api/emergency/incidents/${id}`, {
       method: "DELETE",
-    });
-  },
-
-  restoreIncident(id: string): Promise<EmergencyIncident> {
-    return incidentRequest<EmergencyIncident>(`/api/emergency/incidents/${id}/restore`, {
-      method: "POST",
-      body: "{}",
     });
   },
 
